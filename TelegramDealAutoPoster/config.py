@@ -25,6 +25,16 @@ TARGET_CHANNELS = [ch.strip() for ch in TARGET_CHANNELS_RAW.split(",") if ch.str
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 
+# ── Optional knobs ──────────────────────────────────────────────────
+
+WARMUP_HOURS = int(os.getenv("WARMUP_HOURS", "0"))
+
+RATE_LIMIT_HR = int(os.getenv("RATE_LIMIT_HR", "10"))
+MIN_DELAY_S = int(os.getenv("MIN_DELAY_S", "30"))
+MAX_DELAY_S = int(os.getenv("MAX_DELAY_S", "90"))
+
+ALERT_CHAT_ID = os.getenv("ALERT_CHAT_ID", "").strip()
+
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=getattr(logging, LOG_LEVEL, logging.INFO)

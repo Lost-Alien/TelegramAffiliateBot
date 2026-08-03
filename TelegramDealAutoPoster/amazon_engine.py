@@ -29,16 +29,6 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
 }
 
-# Round-robin generator for rotating affiliate tags
-_tag_cycler = itertools.cycle(config.AFFILIATE_TAGS)
-
-def get_next_affiliate_tag(override_tags: Optional[List[str]] = None) -> str:
-    """Return the next affiliate tag from rotation list."""
-    tags = override_tags if override_tags else config.AFFILIATE_TAGS
-    if not tags:
-        return "onamztechst01-21"
-    return next(itertools.cycle(tags))
-
 def extract_asin(url: str) -> Optional[str]:
     """Extract 10-character Amazon Standard Identification Number (ASIN) from URL."""
     for pattern in ASIN_PATTERNS:
@@ -84,19 +74,20 @@ async def process_deal_text(text: str, affiliate_tags: Optional[List[str]] = Non
     extracted_asins: Set[str] = set()
     updated_text = text
     tags_list = affiliate_tags if affiliate_tags else config.AFFILIATE_TAGS
-    
+    tag_cycle = itertools.cycle(tags_list) if tags_list else None
+
     for orig_url in urls:
         target_url = orig_url
         if any(pattern.search(orig_url) for pattern in SHORT_LINK_PATTERNS) or "amzn." in orig_url:
             target_url = await resolve_short_url(orig_url)
-            
+
         asin = extract_asin(target_url) or extract_asin(orig_url)
         if not asin:
             continue
-            
+
         extracted_asins.add(asin)
         domain = extract_domain(target_url, default_domain=default_domain)
-        tag = next(_tag_cycler) if tags_list else "onamztechst01-21"
+        tag = next(tag_cycle) if tag_cycle else "onamztechst01-21"
         
         affiliate_url = f"https://www.{domain}/dp/{asin}?tag={tag}"
         
