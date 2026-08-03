@@ -71,7 +71,7 @@ def create_app(client: TelegramClient) -> FastAPI:
             # Start streaming from the current latest event ID
             last_id = state.get_last_event_id()
             try:
-                while not request.is_disconnected():
+                while not await request.is_disconnected():
                     events = state.events_since_id(last_id)
                     if events:
                         for ev in events:
