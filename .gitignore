@@ -4,6 +4,6 @@ __pycache__/
 .pytest_cache/
 .commandcode/
 *.log
-*.session
-*.db
+*.session*
+*.db*
 

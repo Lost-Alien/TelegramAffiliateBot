@@ -25,6 +25,10 @@ TARGET_CHANNELS = [ch.strip() for ch in TARGET_CHANNELS_RAW.split(",") if ch.str
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 
+# Web UI Monitor Configuration (binds 127.0.0.1 only by default)
+WEB_HOST = os.getenv("WEB_HOST", "127.0.0.1")
+WEB_PORT = int(os.getenv("WEB_PORT", "8000"))
+
 # ── Optional knobs ──────────────────────────────────────────────────
 
 WARMUP_HOURS = int(os.getenv("WARMUP_HOURS", "0"))

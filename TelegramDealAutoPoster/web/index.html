@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Telegram Deal Auto-Poster Monitor</title>
+  <!-- Modern Google Font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-main: #0b0f19;
+      --bg-card: rgba(17, 24, 39, 0.75);
+      --bg-card-hover: rgba(31, 41, 55, 0.85);
+      --border-color: rgba(255, 255, 255, 0.08);
+      --border-glow: rgba(6, 182, 212, 0.3);
+      --text-main: #f3f4f6;
+      --text-muted: #9ca3af;
+      --accent-cyan: #06b6d4;
+      --accent-purple: #8b5cf6;
+      --accent-green: #10b981;
+      --accent-blue: #3b82f6;
+      --accent-amber: #f59e0b;
+      --accent-rose: #f43f5e;
+      --font-main: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-main);
+      background-image: 
+        radial-gradient(at 15% 15%, rgba(6, 182, 212, 0.08) 0px, transparent 50%),
+        radial-gradient(at 85% 85%, rgba(139, 92, 246, 0.08) 0px, transparent 50%);
+      background-attachment: fixed;
+      color: var(--text-main);
+      font-family: var(--font-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+    }
+
+    /* Top Navbar */
+    .navbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.25rem 2rem;
+      background: rgba(11, 15, 25, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-color);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .brand-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.35rem;
+      box-shadow: 0 0 15px rgba(6, 182, 212, 0.35);
+    }
+
+    .brand-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      background: linear-gradient(to right, #fff, #cbd5e1);
+      background-clip: text;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .nav-badges {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.35rem 0.85rem;
+      border-radius: 9999px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      background: rgba(16, 185, 129, 0.12);
+      color: var(--accent-green);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-green);
+      box-shadow: 0 0 8px var(--accent-green);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.85); }
+    }
+
+    .tag-badge {
+      padding: 0.35rem 0.75rem;
+      border-radius: 8px;
+      font-size: 0.75rem;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border-color);
+      color: var(--text-muted);
+    }
+    .tag-badge strong {
+      color: var(--text-main);
+    }
+
+    /* Main Container */
+    .container {
+      max-width: 1440px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 2rem;
+    }
+
+    /* KPI Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 1.25rem;
+    }
+
+    .kpi-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 1.25rem;
+      backdrop-filter: blur(10px);
+      transition: all 0.25s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .kpi-card:hover {
+      transform: translateY(-3px);
+      border-color: var(--border-glow);
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+    }
+
+    .kpi-label {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .kpi-value {
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .kpi-subtext {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: 0.4rem;
+    }
+
+    /* Rate limiter bar */
+    .progress-bar-bg {
+      width: 100%;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 999px;
+      margin-top: 0.75rem;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent-cyan), var(--accent-purple));
+      border-radius: 999px;
+      width: 0%;
+      transition: width 0.4s ease;
+    }
+
+    /* Activity mini-badges inside card */
+    .activity-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      margin-top: 0.5rem;
+    }
+
+    .count-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .pill-blue { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
+    .pill-green { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+    .pill-amber { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+    .pill-rose { background: rgba(244, 63, 94, 0.15); color: #fb7185; }
+
+    /* Layout Sections */
+    .grid-2col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+    }
+
+    @media (max-width: 1024px) {
+      .grid-2col {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Panels */
+    .panel {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      backdrop-filter: blur(10px);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .panel-title {
+      font-size: 1.05rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+
+    .panel-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.45rem 0.9rem;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1px solid var(--border-color);
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-main);
+      transition: all 0.2s ease;
+    }
+
+    .btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .btn-accent {
+      background: rgba(6, 182, 212, 0.15);
+      border-color: rgba(6, 182, 212, 0.3);
+      color: var(--accent-cyan);
+    }
+
+    .btn-accent:hover {
+      background: rgba(6, 182, 212, 0.25);
+    }
+
+    /* Table Styles */
+    .table-container {
+      width: 100%;
+      overflow-x: auto;
+      max-height: 420px;
+      overflow-y: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+      text-align: left;
+    }
+
+    th {
+      background: rgba(0, 0, 0, 0.25);
+      color: var(--text-muted);
+      font-weight: 600;
+      padding: 0.75rem 1.25rem;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    td {
+      padding: 0.85rem 1.25rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      color: var(--text-main);
+      white-space: nowrap;
+    }
+
+    tr:hover td {
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .type-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.2rem 0.6rem;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      text-transform: capitalize;
+    }
+    .type-channel { background: rgba(139, 92, 246, 0.15); color: #c4b5fd; }
+    .type-group { background: rgba(6, 182, 212, 0.15); color: #67e8f9; }
+
+    .asin-pill {
+      display: inline-block;
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.08);
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      margin-right: 0.25rem;
+    }
+
+    .media-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    /* Live Log Terminal */
+    .terminal-container {
+      background: #060911;
+      border-top: 1px solid var(--border-color);
+      height: 380px;
+      overflow-y: auto;
+      padding: 1rem 1.25rem;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      line-height: 1.6;
+    }
+
+    .log-line {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      padding: 0.15rem 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+      word-break: break-word;
+    }
+
+    .log-ts {
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    .log-type {
+      font-weight: 600;
+      flex-shrink: 0;
+      text-transform: uppercase;
+      padding: 0 0.4rem;
+      border-radius: 4px;
+      font-size: 0.72rem;
+    }
+
+    .log-type-detected { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
+    .log-type-posted { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+    .log-type-skipped_dup { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+    .log-type-error { background: rgba(244, 63, 94, 0.2); color: #fb7185; }
+    .log-type-warmup { background: rgba(139, 92, 246, 0.2); color: #c4b5fd; }
+    .log-type-log { background: rgba(255, 255, 255, 0.05); color: var(--text-muted); }
+
+    .log-msg {
+      color: var(--text-main);
+      flex-grow: 1;
+    }
+
+    .log-msg.level-ERROR {
+      color: #fb7185;
+      font-weight: 500;
+    }
+
+    .log-msg.level-WARNING {
+      color: #fbbf24;
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.25);
+    }
+
+    .empty-state {
+      padding: 2.5rem;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    .spin {
+      animation: rotate 1s linear infinite;
+    }
+
+    @keyframes rotate {
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Navbar -->
+  <nav class="navbar">
+    <div class="brand">
+      <div class="brand-icon">⚡</div>
+      <div>
+        <div class="brand-title">Telegram Deal Auto-Poster</div>
+        <div style="font-size: 0.75rem; color: var(--text-muted);">Real-Time Localhost Monitor &amp; Discovery</div>
+      </div>
+    </div>
+
+    <div class="nav-badges">
+      <div class="status-badge" id="botStatus">
+        <span class="status-dot"></span>
+        <span>ONLINE</span>
+      </div>
+      <div class="tag-badge">
+        Targets: <strong id="targetsBadge">Loading...</strong>
+      </div>
+      <div class="tag-badge">
+        Affiliate Tags: <strong id="tagsBadge">Loading...</strong>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Content Container -->
+  <main class="container">
+
+    <!-- KPI Stats Cards -->
+    <section class="stats-grid">
+      <div class="kpi-card">
+        <div class="kpi-label">
+          <span>Uptime</span>
+          <span>⏱️</span>
+        </div>
+        <div class="kpi-value" id="uptimeValue">--:--:--</div>
+        <div class="kpi-subtext" id="startedAtText">Started: --</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">
+          <span>Warm-Up Mode</span>
+          <span>🔥</span>
+        </div>
+        <div class="kpi-value" id="warmupValue">Disabled</div>
+        <div class="kpi-subtext" id="warmupSubtext">Silent deal detection only</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">
+          <span>Posts Today</span>
+          <span>📢</span>
+        </div>
+        <div class="kpi-value" id="postsTodayValue">0</div>
+        <div class="kpi-subtext" id="lastPostText">Last post: Never</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">
+          <span>Activity Counters</span>
+          <span>📊</span>
+        </div>
+        <div class="activity-row">
+          <span class="count-pill pill-blue" title="Detected">🔍 <span id="detectedCount">0</span></span>
+          <span class="count-pill pill-green" title="Posted">✅ <span id="postedCount">0</span></span>
+          <span class="count-pill pill-amber" title="Skipped Duplicate">⚡ <span id="skippedCount">0</span></span>
+          <span class="count-pill pill-rose" title="Errors">❌ <span id="errorCount">0</span></span>
+        </div>
+        <div class="kpi-subtext" style="margin-top: 0.75rem;">Total deal events processed</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">
+          <span>Rate Limiter</span>
+          <span>⏳</span>
+        </div>
+        <div class="kpi-value"><span id="rateUsed">0</span> / <span id="rateMax">10</span></div>
+        <div class="progress-bar-bg">
+          <div class="progress-bar-fill" id="rateBar" style="width: 0%;"></div>
+        </div>
+        <div class="kpi-subtext">Rolling 1-hour window</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">
+          <span>Dedup Cache Size</span>
+          <span>🗄️</span>
+        </div>
+        <div class="kpi-value" id="dedupSizeValue">0</div>
+        <div class="kpi-subtext">7-day persistent ASIN memory</div>
+      </div>
+    </section>
+
+    <!-- Discovered Channels & Recent Deals Grid -->
+    <section class="grid-2col">
+      
+      <!-- Panel: Discovered Channels -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <span>📡 Discovered Source Channels</span>
+            <span class="tag-badge" id="channelCountBadge">0</span>
+          </div>
+          <div class="panel-actions">
+            <button class="btn btn-accent" id="refreshChannelsBtn" onclick="fetchChannels(true)">
+              <span id="refreshIcon">↻</span> Refresh
+            </button>
+          </div>
+        </div>
+        <div class="table-container">
+          <table id="channelsTable">
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th>Username</th>
+                <th>Type</th>
+                <th>Participants</th>
+              </tr>
+            </thead>
+            <tbody id="channelsBody">
+              <tr>
+                <td colspan="4" class="empty-state">Loading discovered channels...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Panel: Recent Deals -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <span>🛒 Recent Deal Posts</span>
+            <span class="tag-badge" id="dealsCountBadge">0</span>
+          </div>
+        </div>
+        <div class="table-container">
+          <table id="dealsTable">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Source</th>
+                <th>ASINs</th>
+                <th>Target</th>
+                <th>Media</th>
+              </tr>
+            </thead>
+            <tbody id="dealsBody">
+              <tr>
+                <td colspan="5" class="empty-state">Waiting for deal posts...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- Live Event & Log Terminal -->
+    <section class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <span>🖥️ Live Event &amp; Log Tail (SSE)</span>
+          <span class="tag-badge" id="logStatusBadge">Connected</span>
+        </div>
+        <div class="panel-actions">
+          <label style="font-size: 0.8rem; display: flex; align-items: center; gap: 0.4rem; cursor: pointer; color: var(--text-muted);">
+            <input type="checkbox" id="autoScrollCheck" checked /> Auto-scroll
+          </label>
+          <button class="btn" onclick="clearLogs()">Clear</button>
+        </div>
+      </div>
+      <div class="terminal-container" id="terminalLog">
+        <!-- Log lines go here -->
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    // State references
+    let uptimeInterval = null;
+    let startedAtTs = 0;
+    let warmupEndTs = 0;
+    let isHoveringTerminal = false;
+
+    // Terminal hover controls
+    const terminalEl = document.getElementById("terminalLog");
+    terminalEl.addEventListener("mouseenter", () => { isHoveringTerminal = true; });
+    terminalEl.addEventListener("mouseleave", () => { isHoveringTerminal = false; });
+
+    // Format time helpers
+    function formatTime(unixTs) {
+      if (!unixTs) return "Never";
+      const dt = new Date(unixTs * 1000);
+      return dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+
+    function formatDate(unixTs) {
+      if (!unixTs) return "Never";
+      const dt = new Date(unixTs * 1000);
+      return dt.toLocaleDateString() + " " + dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function formatDuration(seconds) {
+      if (seconds <= 0) return "00:00:00";
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      const s = Math.floor(seconds % 60);
+      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
+
+    // Update uptime timer
+    function startUptimeTicker() {
+      if (uptimeInterval) clearInterval(uptimeInterval);
+      uptimeInterval = setInterval(() => {
+        const now = Date.now() / 1000;
+        if (startedAtTs > 0) {
+          const uptimeSec = Math.max(0, now - startedAtTs);
+          document.getElementById("uptimeValue").textContent = formatDuration(uptimeSec);
+        }
+        // Update warmup timer if active
+        if (warmupEndTs > 0) {
+          const rem = warmupEndTs - now;
+          if (rem > 0) {
+            document.getElementById("warmupValue").textContent = formatDuration(rem);
+            document.getElementById("warmupSubtext").textContent = "Countdown to active posting";
+          } else {
+            document.getElementById("warmupValue").textContent = "Completed";
+            document.getElementById("warmupSubtext").textContent = "Posting active";
+          }
+        }
+      }, 1000);
+    }
+
+    // Fetch Stats
+    async function fetchStats() {
+      try {
+        const res = await fetch("/api/stats");
+        if (!res.ok) return;
+        const data = await res.json();
+
+        // Target / tags badges
+        document.getElementById("targetsBadge").textContent = 
+          (data.target_channels && data.target_channels.length) ? data.target_channels.join(", ") : "None";
+        document.getElementById("tagsBadge").textContent = 
+          (data.affiliate_tags && data.affiliate_tags.length) ? data.affiliate_tags.join(", ") : "None";
+
+        // Uptime & Warmup timestamps
+        startedAtTs = data.stats.started_at || 0;
+        document.getElementById("startedAtText").textContent = "Started: " + formatDate(startedAtTs);
+
+        warmupEndTs = data.warmup_until || 0;
+        if (data.warmup_hours > 0 && warmupEndTs > 0) {
+          const rem = warmupEndTs - (Date.now() / 1000);
+          if (rem <= 0) {
+            document.getElementById("warmupValue").textContent = "Completed";
+            document.getElementById("warmupSubtext").textContent = "Posting active";
+          }
+        } else {
+          document.getElementById("warmupValue").textContent = "Disabled";
+          document.getElementById("warmupSubtext").textContent = "Immediate posting active";
+        }
+
+        // Counters
+        document.getElementById("postsTodayValue").textContent = data.stats.posts_today || 0;
+        document.getElementById("lastPostText").textContent = "Last post: " + formatTime(data.stats.last_post_at);
+
+        document.getElementById("detectedCount").textContent = data.stats.total_detected || 0;
+        document.getElementById("postedCount").textContent = data.stats.total_posted || 0;
+        document.getElementById("skippedCount").textContent = data.stats.total_skipped_dup || 0;
+        document.getElementById("errorCount").textContent = data.stats.total_errors || 0;
+
+        // Rate limiter
+        const used = data.rate_limiter.used || 0;
+        const max = data.rate_limiter.max || 10;
+        document.getElementById("rateUsed").textContent = used;
+        document.getElementById("rateMax").textContent = max;
+        const pct = Math.min(100, Math.round((used / max) * 100));
+        document.getElementById("rateBar").style.width = pct + "%";
+
+        // Dedup size
+        document.getElementById("dedupSizeValue").textContent = data.dedup_size || 0;
+
+      } catch (err) {
+        console.error("Failed to fetch stats:", err);
+      }
+    }
+
+    // Fetch Channels
+    async function fetchChannels(forceRefresh = false) {
+      const btnIcon = document.getElementById("refreshIcon");
+      if (forceRefresh) btnIcon.classList.add("spin");
+
+      try {
+        const url = forceRefresh ? "/api/channels?refresh=true" : "/api/channels";
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("Network error");
+        const data = await res.json();
+
+        const channels = data.channels || [];
+        document.getElementById("channelCountBadge").textContent = channels.length;
+
+        const tbody = document.getElementById("channelsBody");
+        if (channels.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No source channels discovered.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = channels.map(c => `
+          <tr>
+            <td><strong>${c.title}</strong></td>
+            <td>${c.username ? `<a href="https://t.me/${c.username}" target="_blank" style="color: var(--accent-cyan); text-decoration: none;">@${c.username}</a>` : `<span style="color: var(--text-muted);">Private/ID: ${c.id}</span>`}</td>
+            <td><span class="type-badge type-${c.type}">${c.type}</span></td>
+            <td>${c.participants_count ? c.participants_count.toLocaleString() : '-'}</td>
+          </tr>
+        `).join("");
+
+      } catch (err) {
+        console.error("Failed to fetch channels:", err);
+      } finally {
+        btnIcon.classList.remove("spin");
+      }
+    }
+
+    // Fetch Recent Deals
+    async function fetchRecent() {
+      try {
+        const res = await fetch("/api/recent?n=50");
+        if (!res.ok) return;
+        const data = await res.json();
+
+        const deals = data.deals || [];
+        document.getElementById("dealsCountBadge").textContent = deals.length;
+
+        const tbody = document.getElementById("dealsBody");
+        if (deals.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No deals posted yet.</td></tr>';
+          return;
+        }
+
+        // Render in reverse chronological order
+        tbody.innerHTML = deals.slice().reverse().map(d => {
+          const asinsHtml = (d.asins || []).map(a => `<span class="asin-pill">${a}</span>`).join("");
+          return `
+            <tr>
+              <td>${formatTime(d.ts)}</td>
+              <td>${d.source_title || d.source_id || 'Unknown'}</td>
+              <td>${asinsHtml || '-'}</td>
+              <td><span style="color: var(--accent-green); font-weight: 500;">${d.target || '-'}</span></td>
+              <td>
+                <span class="media-badge">
+                  ${d.has_media ? '📷 Media' : '📄 Text'}
+                </span>
+              </td>
+            </tr>
+          `;
+        }).join("");
+
+      } catch (err) {
+        console.error("Failed to fetch recent deals:", err);
+      }
+    }
+
+    // Append a log line to terminal
+    function appendLog(ev) {
+      const div = document.createElement("div");
+      div.className = "log-line";
+      
+      const timeStr = formatTime(ev.ts);
+      const typeStr = ev.type || "log";
+      const msgStr = ev.msg || "";
+      const level = ev.level || "INFO";
+
+      div.innerHTML = `
+        <span class="log-ts">[${timeStr}]</span>
+        <span class="log-type log-type-${typeStr}">${typeStr}</span>
+        <span class="log-msg level-${level}">${msgStr}</span>
+      `;
+
+      terminalEl.appendChild(div);
+
+      // Keep max 300 DOM nodes in terminal
+      while (terminalEl.children.length > 300) {
+        terminalEl.removeChild(terminalEl.firstChild);
+      }
+
+      // Auto-scroll if checkbox checked & not hovering
+      const autoScroll = document.getElementById("autoScrollCheck").checked;
+      if (autoScroll && !isHoveringTerminal) {
+        terminalEl.scrollTop = terminalEl.scrollHeight;
+      }
+    }
+
+    // Clear Logs
+    function clearLogs() {
+      terminalEl.innerHTML = "";
+    }
+
+    // Load initial logs
+    async function loadInitialLogs() {
+      try {
+        const res = await fetch("/api/logs?n=100");
+        if (!res.ok) return;
+        const data = await res.json();
+        const logs = data.logs || [];
+        terminalEl.innerHTML = "";
+        logs.forEach(ev => appendLog(ev));
+      } catch (err) {
+        console.error("Failed to load initial logs:", err);
+      }
+    }
+
+    // Connect Server-Sent Events (SSE)
+    function connectSSE() {
+      const statusBadge = document.getElementById("logStatusBadge");
+      const es = new EventSource("/api/events");
+
+      es.onopen = () => {
+        statusBadge.textContent = "Live Stream Connected";
+        statusBadge.style.color = "var(--accent-green)";
+      };
+
+      es.onmessage = (e) => {
+        try {
+          const ev = JSON.parse(e.data);
+          appendLog(ev);
+
+          // Whenever a deal event happens, refresh stats and recent deals instantly
+          if (["detected", "posted", "skipped_dup", "error", "warmup"].includes(ev.type)) {
+            fetchStats();
+            fetchRecent();
+          }
+        } catch (err) {
+          console.error("Error parsing SSE event:", err);
+        }
+      };
+
+      es.onerror = () => {
+        statusBadge.textContent = "Reconnecting...";
+        statusBadge.style.color = "var(--accent-amber)";
+        // Browser EventSource automatically reconnects
+      };
+    }
+
+    // Init & Polling
+    window.addEventListener("DOMContentLoaded", () => {
+      fetchStats();
+      fetchChannels();
+      fetchRecent();
+      loadInitialLogs();
+      startUptimeTicker();
+      connectSSE();
+
+      // Poll stats, recent deals, and channels every 5 seconds
+      setInterval(() => {
+        fetchStats();
+        fetchRecent();
+      }, 5000);
+
+      setInterval(() => {
+        fetchChannels();
+      }, 15000); // refresh channels every 15s in background
+    });
+  </script>
+</body>
+</html>

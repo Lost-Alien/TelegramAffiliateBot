@@ -15,6 +15,8 @@ from utils import (
     dedup_prune,
     _RATE_LIMITER,
 )
+import state
+
 
 
 async def safe_send(client, target, *, text=None, parse_mode=None, media=None, caption=None):
@@ -94,6 +96,9 @@ async def start_deal_listener(client: TelegramClient) -> None:
         if not text:
             return
 
+        chat = await event.get_chat()
+        chat_title = getattr(chat, "title", str(event.chat_id)) if chat else str(event.chat_id)
+
         # Warm-up: detect deals but never post
         if warmup_hours > 0:
             _, _, asins = await process_deal_text(
@@ -101,12 +106,22 @@ async def start_deal_listener(client: TelegramClient) -> None:
             )
             if asins:
                 logger.info("[WARMUP] Deal detected (skipping post): %s ASINs=%s", event.chat_id, asins)
+                state.record_detected(asins, source_id=event.chat_id, source_title=chat_title)
+                state.record_event("warmup", f"[WARMUP] Deal detected (skipping post): {chat_title} ASINs={asins}")
             return
 
         has_amazon, updated_text, asins = await process_deal_text(
             text=text, default_domain=config.DEFAULT_AMAZON_DOMAIN
         )
         if not has_amazon:
+            return
+
+        state.record_detected(asins, source_id=event.chat_id, source_title=chat_title)
+
+        # Skip duplicate deal if all ASINs have already been posted
+        if asins and all(dedup_has(a) for a in asins):
+            logger.info("Skipping duplicate deal from %s — ASINs %s already posted", event.chat_id, asins)
+            state.record_skipped(asins)
             return
 
         # Record ASINs in persistent store
@@ -144,9 +159,18 @@ async def start_deal_listener(client: TelegramClient) -> None:
                         parse_mode="HTML",
                     )
                 logger.info("Posted to %s ✓", target_raw)
+                state.record_posted({
+                    "asins": asins,
+                    "source_id": event.chat_id,
+                    "source_title": chat_title,
+                    "target": target_raw,
+                    "has_media": bool(event.message.media),
+                })
             except Exception as e:
-                errors.append(f"{target_raw}: {e}")
+                msg = f"{target_raw}: {e}"
+                errors.append(msg)
                 logger.error("Failed to post to '%s': %s", target_raw, e)
+                state.record_error(msg)
 
         # Alert on failures (to configured alert chat or first target fallback)
         if errors:
