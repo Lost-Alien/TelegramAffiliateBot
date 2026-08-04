@@ -92,4 +92,17 @@ def create_app(client: TelegramClient) -> FastAPI:
             },
         )
 
+    @app.get("/api/invite-link")
+    async def get_invite_link(channel: str = Query(None, description="Target channel username or ID")):
+        """Generate an invite link with 'Request to Join' enabled for auto-approval."""
+        from join_approver import generate_invite_link
+        target = channel or (config.TARGET_CHANNELS[0] if config.TARGET_CHANNELS else None)
+        if not target:
+            return {"error": "No target channel specified or configured."}
+        try:
+            link = await generate_invite_link(client, target, request_needed=True)
+            return {"channel": target, "invite_link": link, "auto_approve": True}
+        except Exception as e:
+            return {"channel": target, "error": str(e)}
+
     return app

@@ -5,6 +5,7 @@ from telethon import TelegramClient
 import config
 from config import logger
 from deal_listener import start_deal_listener
+from join_approver import start_join_request_approver
 import state
 import channels
 from web.api import create_app
@@ -45,6 +46,7 @@ async def main():
 
     # Register event listeners
     await start_deal_listener(client)
+    start_join_request_approver(client)
     
     print(f"\n🚀 Multi-Channel Deal Auto-Poster is running as @{me.username or me.first_name}!")
     print(f"🌐 Web UI Monitor: http://{config.WEB_HOST}:{config.WEB_PORT}")
