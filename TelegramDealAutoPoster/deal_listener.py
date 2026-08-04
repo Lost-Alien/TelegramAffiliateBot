@@ -26,7 +26,7 @@ async def safe_send(client, target, *, text=None, parse_mode=None, media=None, c
         attempts += 1
         try:
             if text is not None:
-                return await client.send_message(target, text=text, parse_mode=parse_mode)
+                return await client.send_message(target, message=text, parse_mode=parse_mode)
             kwargs = {"file": media}
             if caption:
                 kwargs["caption"] = caption
