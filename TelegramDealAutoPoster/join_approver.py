@@ -6,8 +6,38 @@ Allows users to join target deal channels via a public invite link with auto-app
 import asyncio
 from telethon import TelegramClient, events
 from telethon.tl import types
-from telethon.tl.functions.messages import HideChatJoinRequestRequest, ExportChatInviteRequest
+from telethon.tl.functions.messages import HideChatJoinRequestRequest, ExportChatInviteRequest, HideAllChatJoinRequestsRequest
 from config import logger
+
+
+async def approve_all_pending_requests(client: TelegramClient, channel_raw: str) -> int:
+    """Approve all pending join requests for a channel in a single API call."""
+    try:
+        entity = await client.get_entity(channel_raw)
+        await client(HideAllChatJoinRequestsRequest(
+            peer=entity,
+            approved=True
+        ))
+        logger.info("⚡ Approved all pending join requests for %s", channel_raw)
+        return True
+    except Exception as e:
+        logger.warning("Could not approve all join requests for %s: %s", channel_raw, e)
+        return False
+
+
+async def _periodic_join_sweeper(client: TelegramClient) -> None:
+    """Periodically sweep all target channels and approve any waiting join requests."""
+    await asyncio.sleep(15)  # initial delay
+    while True:
+        try:
+            from config import TARGET_CHANNELS
+            for target in TARGET_CHANNELS:
+                await approve_all_pending_requests(client, target)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.debug("Join sweeper error: %s", e)
+        await asyncio.sleep(60)
 
 
 def start_join_request_approver(client: TelegramClient) -> None:
@@ -16,30 +46,28 @@ def start_join_request_approver(client: TelegramClient) -> None:
     @client.on(events.Raw(types.UpdateBotChatInviteRequester))
     async def on_bot_join_request(event: types.UpdateBotChatInviteRequester):
         try:
-            await client(HideChatJoinRequestRequest(
+            await client(HideAllChatJoinRequestsRequest(
                 peer=event.peer,
-                user_id=event.user_id,
                 approved=True
             ))
-            logger.info("⚡ Auto-approved join request from user ID %s", event.user_id)
+            logger.info("⚡ Auto-approved join request(s) on chat ID %s (user ID: %s)", getattr(event.peer, 'channel_id', event.peer), getattr(event, 'user_id', 'unknown'))
         except Exception as e:
-            logger.warning("Failed to auto-approve join request from user ID %s: %s", event.user_id, e)
+            logger.warning("Failed to auto-approve join request: %s", e)
 
     @client.on(events.Raw(types.UpdatePendingJoinRequests))
     async def on_pending_join_requests(event: types.UpdatePendingJoinRequests):
-        requesters = getattr(event, "recent_requesters", []) or []
-        for user_id in requesters:
-            try:
-                await client(HideChatJoinRequestRequest(
-                    peer=event.peer,
-                    user_id=user_id,
-                    approved=True
-                ))
-                logger.info("⚡ Auto-approved join request from user ID %s", user_id)
-            except Exception as e:
-                logger.warning("Failed to auto-approve join request from user ID %s: %s", user_id, e)
+        try:
+            await client(HideAllChatJoinRequestsRequest(
+                peer=event.peer,
+                approved=True
+            ))
+            logger.info("⚡ Auto-approved pending join request(s) on chat ID %s", getattr(event.peer, 'channel_id', event.peer))
+        except Exception as e:
+            logger.warning("Failed to auto-approve pending join requests: %s", e)
 
-    logger.info("✓ Join Request Auto-Approver active — listening for incoming requests …")
+    # Start 60-second periodic sweeper task
+    asyncio.create_task(_periodic_join_sweeper(client))
+    logger.info("✓ Join Request Auto-Approver active (Instant events + 60s sweeper)")
 
 
 async def generate_invite_link(client: TelegramClient, channel_raw: str, request_needed: bool = True) -> str:

@@ -105,4 +105,14 @@ def create_app(client: TelegramClient) -> FastAPI:
         except Exception as e:
             return {"channel": target, "error": str(e)}
 
+    @app.get("/api/approve-all")
+    async def approve_all(channel: str = Query(None, description="Target channel username or ID")):
+        """Manually trigger approval of all pending join requests for a channel."""
+        from join_approver import approve_all_pending_requests
+        target = channel or (config.TARGET_CHANNELS[0] if config.TARGET_CHANNELS else None)
+        if not target:
+            return {"error": "No target channel specified or configured."}
+        success = await approve_all_pending_requests(client, target)
+        return {"channel": target, "success": success}
+
     return app
