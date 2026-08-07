@@ -161,6 +161,31 @@ async def start_deal_listener(client: TelegramClient) -> None:
             for asin in asins:
                 dedup_record(asin)
 
+            # Push deal to TechSelect website
+            if getattr(config, "WEBSITE_WEBHOOK_URL", None):
+                try:
+                    import httpx
+                    import time as _time
+                    webhook_payload = {
+                        "asins": list(asins),
+                        "text": updated_text,
+                        "source_title": chat_title,
+                        "has_media": bool(event.message.media),
+                        "posted_at": _time.time(),
+                    }
+                    async with httpx.AsyncClient(timeout=5.0) as http:
+                        resp = await http.post(
+                            config.WEBSITE_WEBHOOK_URL,
+                            json=webhook_payload,
+                            headers={"x-webhook-secret": config.WEBSITE_WEBHOOK_SECRET or ""},
+                        )
+                    if resp.status_code == 200:
+                        logger.info("Pushed deal to website ✓ — ASINs=%s", asins)
+                    else:
+                        logger.warning("Website webhook returned %d: %s", resp.status_code, resp.text[:200])
+                except Exception as e:
+                    logger.error("Failed to push deal to website: %s", e)
+
         if errors:
             alert_target_raw = getattr(config, "ALERT_CHAT_ID", "")
             if alert_target_raw:

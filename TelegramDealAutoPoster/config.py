@@ -41,6 +41,10 @@ MAX_DELAY_S = int(os.getenv("MAX_DELAY_S", "90"))
 
 ALERT_CHAT_ID = os.getenv("ALERT_CHAT_ID", "").strip()
 
+# Website Integration
+WEBSITE_WEBHOOK_URL = os.getenv("WEBSITE_WEBHOOK_URL", "").strip()
+WEBSITE_WEBHOOK_SECRET = os.getenv("WEBSITE_WEBHOOK_SECRET", "").strip()
+
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=getattr(logging, LOG_LEVEL, logging.INFO)
