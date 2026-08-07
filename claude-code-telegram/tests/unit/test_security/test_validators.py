@@ -314,7 +314,10 @@ class TestSecurityValidator:
 
         # Symlink inside approved dir pointing to file in approved dir
         link_path = temp_approved_dir / "link_to_file"
-        link_path.symlink_to(target_file)
+        try:
+            link_path.symlink_to(target_file)
+        except OSError:
+            pytest.skip("Symlink creation requires elevated privileges on Windows")
 
         # Should be valid - symlink resolves within approved directory
         valid, path, error = validator.validate_path("link_to_file")
