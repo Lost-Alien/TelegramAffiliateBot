@@ -24,8 +24,11 @@ def _check_monitor_access(
     authorization: str | None = None,
     x_api_key: str | None = None,
 ) -> None:
-    """Allow monitor access from loopback by default, or require a token when configured."""
-    client_host = (request.client.host if request.client else "").lower()
+    """Three access modes:
+    - MONITOR_API_TOKEN set  → token required (Bearer or X-Api-Key header)
+    - MONITOR_PUBLIC=true    → fully public, anyone with the link can view
+    - neither                → loopback (127.0.0.1) only
+    """
     token = config.MONITOR_API_TOKEN
     if token:
         bearer = authorization[7:].strip() if authorization and authorization.startswith("Bearer ") else ""
@@ -33,6 +36,11 @@ def _check_monitor_access(
         if not presented or not secrets.compare_digest(presented, token):
             raise HTTPException(status_code=401, detail="Monitor authentication required")
         return
+    # Public mode: anyone with the URL can view
+    if getattr(config, "MONITOR_PUBLIC", False):
+        return
+    # Default: loopback only
+    client_host = (request.client.host if request.client else "").lower()
     if client_host not in _LOOPBACK_HOSTS:
         raise HTTPException(status_code=403, detail="Monitor is restricted to localhost")
 
@@ -40,7 +48,7 @@ def _check_monitor_access(
 def create_app(client: TelegramClient) -> FastAPI:
     app = FastAPI(
         title="Telegram Deal Auto-Poster Monitor",
-        description="Localhost-only read-only monitoring dashboard.",
+        description="Real-time monitoring dashboard for the Telegram Deal Auto-Poster.",
         docs_url=None,
         redoc_url=None,
     )

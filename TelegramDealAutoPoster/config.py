@@ -29,6 +29,8 @@ LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 WEB_HOST = os.getenv("WEB_HOST", "127.0.0.1")
 WEB_PORT = int(os.getenv("WEB_PORT", "8000"))
 MONITOR_API_TOKEN = os.getenv("MONITOR_API_TOKEN", "").strip()
+# Set MONITOR_PUBLIC=true to allow anyone with the URL to view the dashboard (no token needed)
+MONITOR_PUBLIC = os.getenv("MONITOR_PUBLIC", "false").lower() in ("1", "true", "yes")
 
 # Optional knobs
 WARMUP_HOURS = int(os.getenv("WARMUP_HOURS", "0"))
