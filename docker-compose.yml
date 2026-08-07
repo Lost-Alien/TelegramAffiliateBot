@@ -7,3 +7,14 @@ services:
     restart: always
     env_file:
       - .env
+
+  deal-poster:
+    build: ./TelegramDealAutoPoster
+    container_name: telegram_deal_poster
+    restart: always
+    env_file:
+      - ./TelegramDealAutoPoster/.env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./TelegramDealAutoPoster:/app

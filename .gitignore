@@ -1,10 +1,39 @@
-.env
+# Python
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 .pytest_cache/
-.commandcode/
-*.log
-*.session*
-*.db*
+
+# Environment & secrets - NEVER commit these
+.env
+.env.*
+!.env.example
+*.pem
+*.key
 *.csv
-*_credentials.csv
+*_credentials*
+
+# Telegram session files - contain auth tokens
+*.session
+*.session-journal
+
+# Databases
+*.db
+*.db-journal
+*.sqlite
+
+# Logs
+*.log
+
+# IDE / tools
+.commandcode/
+.vscode/
+.idea/
+
+# Docker
+*.override.yml
+
+# Explicit secret files
+Whatsapp_credentials.csv
+TelegramBot-key.pem
