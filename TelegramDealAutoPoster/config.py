@@ -28,9 +28,9 @@ LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 # Web UI Monitor Configuration (binds 127.0.0.1 only by default)
 WEB_HOST = os.getenv("WEB_HOST", "127.0.0.1")
 WEB_PORT = int(os.getenv("WEB_PORT", "8000"))
+MONITOR_API_TOKEN = os.getenv("MONITOR_API_TOKEN", "").strip()
 
-# ── Optional knobs ──────────────────────────────────────────────────
-
+# Optional knobs
 WARMUP_HOURS = int(os.getenv("WARMUP_HOURS", "0"))
 
 RATE_LIMIT_HR = int(os.getenv("RATE_LIMIT_HR", "10"))

@@ -2,20 +2,39 @@
 
 import asyncio
 import json
-import time
+import secrets
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from telethon import TelegramClient
 
+import channels
 import config
 import state
-import channels
-from utils import RATE_LIMITER, rate_limiter_status, dedup_load
+from utils import dedup_load, rate_limiter_status
 
 WEB_DIR = Path(__file__).parent
+_LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost", "testclient"}
+
+
+def _check_monitor_access(
+    request: Request,
+    authorization: str | None = None,
+    x_api_key: str | None = None,
+) -> None:
+    """Allow monitor access from loopback by default, or require a token when configured."""
+    client_host = (request.client.host if request.client else "").lower()
+    token = config.MONITOR_API_TOKEN
+    if token:
+        bearer = authorization[7:].strip() if authorization and authorization.startswith("Bearer ") else ""
+        presented = bearer or (x_api_key or "").strip()
+        if not presented or not secrets.compare_digest(presented, token):
+            raise HTTPException(status_code=401, detail="Monitor authentication required")
+        return
+    if client_host not in _LOOPBACK_HOSTS:
+        raise HTTPException(status_code=403, detail="Monitor is restricted to localhost")
 
 
 def create_app(client: TelegramClient) -> FastAPI:
@@ -31,12 +50,23 @@ def create_app(client: TelegramClient) -> FastAPI:
         return FileResponse(WEB_DIR / "index.html")
 
     @app.get("/api/channels")
-    async def get_channels(refresh: bool = Query(False, description="Force re-scan")) -> dict[str, Any]:
+    async def get_channels(
+        request: Request,
+        refresh: bool = Query(False, description="Force re-scan"),
+        authorization: str | None = Header(None),
+        x_api_key: str | None = Header(None),
+    ) -> dict[str, Any]:
+        _check_monitor_access(request, authorization, x_api_key)
         data = await channels.list_channels(client, force_refresh=refresh)
         return {"channels": data}
 
     @app.get("/api/stats")
-    async def get_stats() -> dict[str, Any]:
+    async def get_stats(
+        request: Request,
+        authorization: str | None = Header(None),
+        x_api_key: str | None = Header(None),
+    ) -> dict[str, Any]:
+        _check_monitor_access(request, authorization, x_api_key)
         snap = state.snapshot()
         limiter = rate_limiter_status()
         warmup_end = state.warmup_until()
@@ -52,23 +82,38 @@ def create_app(client: TelegramClient) -> FastAPI:
             "rate_limiter": limiter,
             "warmup_until": warmup_end,
             "warmup_hours": warmup_hours,
-            "target_channels": config.TARGET_CHANNELS,
-            "affiliate_tags": config.AFFILIATE_TAGS,
             "dedup_size": dedup_size,
         }
 
     @app.get("/api/recent")
-    async def get_recent(n: int = Query(50, ge=1, le=200)) -> dict[str, Any]:
+    async def get_recent(
+        request: Request,
+        n: int = Query(50, ge=1, le=200),
+        authorization: str | None = Header(None),
+        x_api_key: str | None = Header(None),
+    ) -> dict[str, Any]:
+        _check_monitor_access(request, authorization, x_api_key)
         return {"deals": state.recent(n)}
 
     @app.get("/api/logs")
-    async def get_logs(n: int = Query(200, ge=1, le=500)) -> dict[str, Any]:
+    async def get_logs(
+        request: Request,
+        n: int = Query(200, ge=1, le=500),
+        authorization: str | None = Header(None),
+        x_api_key: str | None = Header(None),
+    ) -> dict[str, Any]:
+        _check_monitor_access(request, authorization, x_api_key)
         return {"logs": state.recent_logs(n)}
 
     @app.get("/api/events")
-    async def get_events(request: Request) -> StreamingResponse:
+    async def get_events(
+        request: Request,
+        authorization: str | None = Header(None),
+        x_api_key: str | None = Header(None),
+    ) -> StreamingResponse:
+        _check_monitor_access(request, authorization, x_api_key)
+
         async def event_generator():
-            # Start streaming from the current latest event ID
             last_id = state.get_last_event_id()
             try:
                 while not await request.is_disconnected():
@@ -93,9 +138,15 @@ def create_app(client: TelegramClient) -> FastAPI:
         )
 
     @app.get("/api/invite-link")
-    async def get_invite_link(channel: str = Query(None, description="Target channel username or ID")):
-        """Generate an invite link with 'Request to Join' enabled for auto-approval."""
+    async def get_invite_link(
+        request: Request,
+        channel: str = Query(None, description="Target channel username or ID"),
+        authorization: str | None = Header(None),
+        x_api_key: str | None = Header(None),
+    ):
+        _check_monitor_access(request, authorization, x_api_key)
         from join_approver import generate_invite_link
+
         target = channel or (config.TARGET_CHANNELS[0] if config.TARGET_CHANNELS else None)
         if not target:
             return {"error": "No target channel specified or configured."}
@@ -106,9 +157,15 @@ def create_app(client: TelegramClient) -> FastAPI:
             return {"channel": target, "error": str(e)}
 
     @app.get("/api/approve-all")
-    async def approve_all(channel: str = Query(None, description="Target channel username or ID")):
-        """Manually trigger approval of all pending join requests for a channel."""
+    async def approve_all(
+        request: Request,
+        channel: str = Query(None, description="Target channel username or ID"),
+        authorization: str | None = Header(None),
+        x_api_key: str | None = Header(None),
+    ):
+        _check_monitor_access(request, authorization, x_api_key)
         from join_approver import approve_all_pending_requests
+
         target = channel or (config.TARGET_CHANNELS[0] if config.TARGET_CHANNELS else None)
         if not target:
             return {"error": "No target channel specified or configured."}

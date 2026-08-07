@@ -6,4 +6,5 @@ __pycache__/
 *.log
 *.session*
 *.db*
-
+*.csv
+*_credentials.csv
