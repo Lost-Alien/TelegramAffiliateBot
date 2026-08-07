@@ -12,6 +12,8 @@ try:
     from mcp.server.fastmcp import FastMCP
 except ImportError:
     class FastMCP:  # type: ignore[no-redef]
+        """Minimal stub when the ``mcp`` package is not installed."""
+
         def __init__(self, name: str):
             self.name = name
 
@@ -19,6 +21,12 @@ except ImportError:
             def decorator(func):
                 return func
             return decorator
+
+        def run(self, transport: str = "stdio", **kwargs: object) -> None:
+            raise RuntimeError(
+                "The 'mcp' package is not installed. "
+                "Install it with: pip install mcp"
+            )
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"}
 

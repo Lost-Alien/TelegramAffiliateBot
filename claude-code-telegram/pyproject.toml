@@ -84,6 +84,7 @@ testpaths = ["tests"]
 python_files = "test_*.py"
 addopts = "-v --cov=src --cov-report=html --cov-report=term-missing"
 asyncio_mode = "auto"
+pythonpath = ["."]
 
 [tool.mypy]
 python_version = "3.11"
