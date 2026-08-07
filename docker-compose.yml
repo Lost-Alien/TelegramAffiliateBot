@@ -1,12 +1,12 @@
 version: '3.8'
 
 services:
-  affiliate-bot:
-    build: .
-    container_name: affiliate_telegram_bot
-    restart: always
-    env_file:
-      - .env
+#   affiliate-bot:
+#     build: .
+#     container_name: affiliate_telegram_bot
+#     restart: always
+#     env_file:
+#       - .env
 
   deal-poster:
     build: ./TelegramDealAutoPoster
