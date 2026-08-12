@@ -1,9 +1,14 @@
 import sys
 import asyncio
+import uvicorn
 from telethon import TelegramClient
 import config
 from config import logger
 from deal_listener import start_deal_listener
+from join_approver import start_join_request_approver
+import state
+import channels
+from web.api import create_app
 
 async def main():
     if not config.API_ID or not config.API_HASH:
@@ -25,10 +30,26 @@ async def main():
     me = await client.get_me()
     logger.info(f"Authenticated as Telegram User: {me.first_name} (@{me.username or 'NoUsername'}) [ID: {me.id}]")
     
+    # Initialize monitoring state & custom logger
+    state.init()
+
+    # Build and start FastAPI Web UI Monitor in background
+    app = create_app(client)
+    uvicorn_config = uvicorn.Config(
+        app=app,
+        host=config.WEB_HOST,
+        port=config.WEB_PORT,
+        log_level="warning",
+    )
+    server = uvicorn.Server(config=uvicorn_config)
+    asyncio.create_task(server.serve())
+
     # Register event listeners
     await start_deal_listener(client)
+    start_join_request_approver(client)
     
     print(f"\n🚀 Multi-Channel Deal Auto-Poster is running as @{me.username or me.first_name}!")
+    print(f"🌐 Web UI Monitor: http://{config.WEB_HOST}:{config.WEB_PORT}")
     print(f"Listening to incoming deal posts and replacing Amazon links with tags '{config.AFFILIATE_TAGS}'...\n")
     
     await client.run_until_disconnected()

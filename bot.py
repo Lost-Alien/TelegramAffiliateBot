@@ -111,6 +111,44 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         except Exception as e:
             logger.error(f"Failed to post to channel {config.CHANNEL_ID}: {e}")
 
+    # Push to Website and X (Twitter)
+    try:
+        import re
+        asins = []
+        for _, aff_url in affiliate_links:
+            m = re.search(r"/dp/([A-Z0-9]{10})", aff_url)
+            if m:
+                asins.append(m.group(1))
+
+        if asins:
+            # 1. Website Push
+            if getattr(config, "WEBSITE_WEBHOOK_URL", None):
+                try:
+                    import httpx, time as _time
+                    async with httpx.AsyncClient(timeout=5.0) as http:
+                        await http.post(
+                            config.WEBSITE_WEBHOOK_URL,
+                            json={
+                                "asins": asins,
+                                "text": text,
+                                "source_title": "Telegram Bot",
+                                "has_media": bool(message.photo),
+                                "posted_at": _time.time(),
+                            },
+                            headers={"x-webhook-secret": getattr(config, "WEBSITE_WEBHOOK_SECRET", "")},
+                        )
+                except Exception as e:
+                    logger.error(f"Website push failed: {e}")
+
+            # 2. X (Twitter) Push
+            try:
+                from TelegramDealAutoPoster.x_poster import push_deal_to_x
+                await push_deal_to_x(text=text, asins=asins)
+            except Exception as e:
+                logger.error(f"X push failed: {e}")
+    except Exception as exc:
+        logger.error(f"Integrations error: {exc}")
+
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Log errors and notify dev chat if configured."""
     logger.error("Exception while handling an update:", exc_info=context.error)

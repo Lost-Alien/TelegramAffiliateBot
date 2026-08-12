@@ -25,8 +25,14 @@ TARGET_CHANNELS = [ch.strip() for ch in TARGET_CHANNELS_RAW.split(",") if ch.str
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 
-# ── Optional knobs ──────────────────────────────────────────────────
+# Web UI Monitor Configuration (binds 127.0.0.1 only by default)
+WEB_HOST = os.getenv("WEB_HOST", "127.0.0.1")
+WEB_PORT = int(os.getenv("WEB_PORT", "8000"))
+MONITOR_API_TOKEN = os.getenv("MONITOR_API_TOKEN", "").strip()
+# Set MONITOR_PUBLIC=true to allow anyone with the URL to view the dashboard (no token needed)
+MONITOR_PUBLIC = os.getenv("MONITOR_PUBLIC", "false").lower() in ("1", "true", "yes")
 
+# Optional knobs
 WARMUP_HOURS = int(os.getenv("WARMUP_HOURS", "0"))
 
 RATE_LIMIT_HR = int(os.getenv("RATE_LIMIT_HR", "10"))
@@ -34,6 +40,10 @@ MIN_DELAY_S = int(os.getenv("MIN_DELAY_S", "30"))
 MAX_DELAY_S = int(os.getenv("MAX_DELAY_S", "90"))
 
 ALERT_CHAT_ID = os.getenv("ALERT_CHAT_ID", "").strip()
+
+# Website Integration
+WEBSITE_WEBHOOK_URL = os.getenv("WEBSITE_WEBHOOK_URL", "").strip()
+WEBSITE_WEBHOOK_SECRET = os.getenv("WEBSITE_WEBHOOK_SECRET", "").strip()
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",

@@ -101,3 +101,16 @@ _RATE_LIMITER = RateLimiter(
     min_delay=float(getattr(config, "MIN_DELAY_S", 30)),
     max_delay=float(getattr(config, "MAX_DELAY_S", 90)),
 )
+RATE_LIMITER = _RATE_LIMITER
+
+
+def rate_limiter_status() -> dict:
+    """Return current usage of the sliding-window rate limiter."""
+    now = time.time()
+    active = [t for t in RATE_LIMITER._timestamps if t > now - 3600]
+    return {
+        "used": len(active),
+        "max": RATE_LIMITER.max_per_hour,
+        "window_seconds": 3600,
+    }
+

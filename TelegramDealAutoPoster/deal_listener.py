@@ -8,13 +8,13 @@ import config
 from config import logger
 from amazon_engine import process_deal_text
 from utils import (
-    DEDUP_DB,
     dedup_has,
     dedup_load,
     dedup_record,
     dedup_prune,
     _RATE_LIMITER,
 )
+import state
 
 
 async def safe_send(client, target, *, text=None, parse_mode=None, media=None, caption=None):
@@ -24,7 +24,7 @@ async def safe_send(client, target, *, text=None, parse_mode=None, media=None, c
         attempts += 1
         try:
             if text is not None:
-                return await client.send_message(target, text=text, parse_mode=parse_mode)
+                return await client.send_message(target, message=text, parse_mode=parse_mode)
             kwargs = {"file": media}
             if caption:
                 kwargs["caption"] = caption
@@ -43,23 +43,45 @@ async def safe_send(client, target, *, text=None, parse_mode=None, media=None, c
             raise
 
 
+async def start_rss_sync_loop() -> None:
+    """Background task to periodically sync missing deals from https://techselect.blog/feed.xml."""
+    logger.info("✓ RSS Feed Sync Fallback active (Checking https://techselect.blog/feed.xml every 10 mins)")
+    while True:
+        try:
+            await asyncio.sleep(600)  # Check every 10 minutes
+            from rss_poster import sync_deals_from_rss, extract_asins_from_text
+            from x_poster import push_deal_to_x
+
+            rss_deals = sync_deals_from_rss()
+            for item in rss_deals:
+                asins = extract_asins_from_text(item["description"] + " " + item["link"])
+                if asins and not all(dedup_has(a) for a in asins):
+                    logger.info("RSS Sync: Found new deal in feed — ASINs=%s", asins)
+                    for a in asins:
+                        dedup_record(a)
+                    await push_deal_to_x(text=item["title"] + "\n" + item["description"], asins=asins)
+        except asyncio.CancelledError:
+            break
+        except Exception as exc:
+            logger.error("Error in periodic RSS sync loop: %s", exc)
+
+
 async def start_deal_listener(client: TelegramClient) -> None:
     """Register NewMessage handlers to listen to joined channels."""
+    # Start background RSS sync loop
+    asyncio.create_task(start_rss_sync_loop())
 
     me = await client.get_me()
     my_id = me.id
 
-    # Warm-up mode
     warmup_hours = int(getattr(config, "WARMUP_HOURS", 0))
     if warmup_hours:
         logger.info("Warm-up mode enabled — will log deals silently for %dh …", warmup_hours)
 
-    # Load previously-seen ASINs from SQLite
     known_asins = dedup_load()
-    dedup_prune()  # remove anything older than 7 days
+    dedup_prune()
     logger.info("Loaded %d ASINs from persistent dedup cache (7-day TTL)", len(known_asins))
 
-    # Pre-resolve target channel IDs at startup for fast loop guards (no per-message awaits)
     target_ids = set()
     for raw in config.TARGET_CHANNELS:
         try:
@@ -68,39 +90,39 @@ async def start_deal_listener(client: TelegramClient) -> None:
         except Exception as e:
             logger.error("Cannot resolve target '%s': %s", raw, e)
 
-    # Which channels to monitor (empty list = all joined chats)
     chats_to_listen = config.SOURCE_CHANNELS if config.SOURCE_CHANNELS else None
 
     @client.on(events.NewMessage(chats=chats_to_listen))
     async def handler(event: events.NewMessage.Event):
-        # ── Loop protection ──────────────────────────────────────────
         if event.out:
-            return  # skip messages we sent ourselves
+            return
 
         if event.sender_id:
             try:
                 sender = await client.get_input_entity(event.sender_id)
                 if hasattr(sender, "user_id") and sender.user_id == my_id:
-                    return  # skip messages originating from our own account
+                    return
             except Exception:
                 pass
 
-        # Skip messages from our own target channels
         if target_ids and event.chat_id in target_ids:
             return
 
-        # ── Extract & convert ────────────────────────────────────────
         text = event.message.message or ""
         if not text:
             return
 
-        # Warm-up: detect deals but never post
+        chat = await event.get_chat()
+        chat_title = getattr(chat, "title", str(event.chat_id)) if chat else str(event.chat_id)
+
         if warmup_hours > 0:
             _, _, asins = await process_deal_text(
                 text=text, default_domain=config.DEFAULT_AMAZON_DOMAIN
             )
             if asins:
                 logger.info("[WARMUP] Deal detected (skipping post): %s ASINs=%s", event.chat_id, asins)
+                state.record_detected(asins, source_id=event.chat_id, source_title=chat_title)
+                state.record_event("warmup", f"[WARMUP] Deal detected (skipping post): {chat_title} ASINs={asins}")
             return
 
         has_amazon, updated_text, asins = await process_deal_text(
@@ -109,22 +131,24 @@ async def start_deal_listener(client: TelegramClient) -> None:
         if not has_amazon:
             return
 
-        # Record ASINs in persistent store
-        for a in asins:
-            dedup_record(a)
+        state.record_detected(asins, source_id=event.chat_id, source_title=chat_title)
+
+        if asins and all(dedup_has(a) for a in asins):
+            logger.info("Skipping duplicate deal from %s — ASINs %s already posted", event.chat_id, asins)
+            state.record_skipped(asins)
+            return
 
         logger.info("Deal extracted from %s — ASINs=%s", event.chat_id, asins)
 
-        # Enforce conservative posting cadence
         await _RATE_LIMITER.acquire()
 
-        # ── Post to targets ──────────────────────────────────────────
         if not config.TARGET_CHANNELS:
             logger.warning("No TARGET_CHANNELS configured — printing to log:")
             logger.info(updated_text)
             return
 
         errors: list[str] = []
+        posted_targets = 0
         for target_raw in config.TARGET_CHANNELS:
             try:
                 target = await client.get_entity(target_raw)
@@ -144,22 +168,67 @@ async def start_deal_listener(client: TelegramClient) -> None:
                         parse_mode="HTML",
                     )
                 logger.info("Posted to %s ✓", target_raw)
+                posted_targets += 1
+                state.record_posted({
+                    "asins": asins,
+                    "source_id": event.chat_id,
+                    "source_title": chat_title,
+                    "target": target_raw,
+                    "has_media": bool(event.message.media),
+                })
             except Exception as e:
-                errors.append(f"{target_raw}: {e}")
+                msg = f"{target_raw}: {e}"
+                errors.append(msg)
                 logger.error("Failed to post to '%s': %s", target_raw, e)
+                state.record_error(msg)
 
-        # Alert on failures (to configured alert chat or first target fallback)
-        if errors:
-            alert_msg = "\u26a0\ufe0f Deal Poster Errors\n" + "\n".join(errors)
-            alert_target_raw = getattr(config, "ALERT_CHAT_ID", "") or (
-                config.TARGET_CHANNELS[0] if config.TARGET_CHANNELS else None
-            )
-            if alert_target_raw:
+        if posted_targets:
+            for asin in asins:
+                dedup_record(asin)
+
+            # Push deal to TechSelect website
+            if getattr(config, "WEBSITE_WEBHOOK_URL", None):
                 try:
-                    t = await client.get_entity(alert_target_raw)
-                    await safe_send(client, t, text=alert_msg, parse_mode="HTML")
+                    import httpx
+                    import time as _time
+                    webhook_payload = {
+                        "asins": list(asins),
+                        "text": updated_text,
+                        "source_title": chat_title,
+                        "has_media": bool(event.message.media),
+                        "posted_at": _time.time(),
+                    }
+                    async with httpx.AsyncClient(timeout=5.0) as http:
+                        resp = await http.post(
+                            config.WEBSITE_WEBHOOK_URL,
+                            json=webhook_payload,
+                            headers={"x-webhook-secret": config.WEBSITE_WEBHOOK_SECRET or ""},
+                        )
+                    if resp.status_code == 200:
+                        logger.info("Pushed deal to website ✓ — ASINs=%s", asins)
+                    else:
+                        logger.warning("Website webhook returned %d: %s", resp.status_code, resp.text[:200])
+                except Exception as e:
+                    logger.error("Failed to push deal to website: %s", e)
+
+            # Push deal to X (Twitter @techselect_blog)
+            try:
+                from x_poster import push_deal_to_x
+                await push_deal_to_x(text=updated_text, asins=list(asins))
+            except Exception as e:
+                logger.error("Failed to push deal to X: %s", e)
+
+        if errors:
+            alert_target_raw = getattr(config, "ALERT_CHAT_ID", "")
+            if alert_target_raw:
+                alert_msg = "\u26a0\ufe0f Deal Poster Errors\n" + "\n".join(errors)
+                try:
+                    target = await client.get_entity(alert_target_raw)
+                    await safe_send(client, target, text=alert_msg, parse_mode="HTML")
                 except Exception:
-                    pass  # alerts failing is meta-failing; already logged above
+                    pass
+            else:
+                logger.warning("Posting errors occurred but ALERT_CHAT_ID is not configured")
 
         logger.info("Done with message from %s", event.chat_id)
 

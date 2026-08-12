@@ -56,6 +56,26 @@ docker-compose up -d --build
 
 ---
 
+## Multi-Channel Deal Auto-Poster & Web UI Monitor (`TelegramDealAutoPoster/`)
+
+For advanced multi-channel monitoring using a Telegram Userbot (Telethon), see [`TelegramDealAutoPoster/`](file:///c:/Users/conne/Downloads/AffiliateTelegramBot/TelegramDealAutoPoster/README.md).
+
+### Highlights:
+- 📡 **Channel Auto-Discovery**: Automatically lists all joined channels and groups (`/api/channels`).
+- 🌐 **Live Web UI Dashboard**: Localhost monitoring interface at **http://127.0.0.1:8000** showing real-time metrics, recent deal conversions, and live SSE console logs.
+- 🔁 **SQLite Deduplication & Rate Limiting**: Persistent 7-day deduplication cache and configurable per-hour posting limits.
+- 🛡️ **Burner Account Warm-Up**: Configurable `WARMUP_HOURS` to log deals silently without posting for new accounts.
+
+To run the Multi-Channel Auto-Poster:
+```bash
+cd TelegramDealAutoPoster
+pip install -r requirements.txt
+python auto_login.py  # 1-time Telegram account login
+python main.py        # Starts Auto-Poster + Web UI Monitor on http://127.0.0.1:8000
+```
+
+---
+
 ## License
 
 GPL-3.0 License

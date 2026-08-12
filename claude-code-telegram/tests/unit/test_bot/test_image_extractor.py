@@ -139,6 +139,7 @@ class TestValidateImagePath:
         assert result is None
 
     def test_symlink_escaping_rejected(self, tmp_path: Path):
+        import sys
         approved = tmp_path / "approved"
         approved.mkdir()
         outside = tmp_path / "secret"
@@ -146,7 +147,10 @@ class TestValidateImagePath:
         secret_img = outside / "secret.png"
         secret_img.write_bytes(b"\x00" * 100)
         link = approved / "link.png"
-        link.symlink_to(secret_img)
+        try:
+            link.symlink_to(secret_img)
+        except OSError:
+            pytest.skip("Symlink creation requires elevated privileges on Windows")
         result = validate_image_path(str(link), approved)
         assert result is None
 
