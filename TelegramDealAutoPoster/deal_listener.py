@@ -186,6 +186,13 @@ async def start_deal_listener(client: TelegramClient) -> None:
                 except Exception as e:
                     logger.error("Failed to push deal to website: %s", e)
 
+            # Push deal to X (Twitter @techselect_blog)
+            try:
+                from x_poster import push_deal_to_x
+                await push_deal_to_x(text=updated_text, asins=list(asins))
+            except Exception as e:
+                logger.error("Failed to push deal to X: %s", e)
+
         if errors:
             alert_target_raw = getattr(config, "ALERT_CHAT_ID", "")
             if alert_target_raw:

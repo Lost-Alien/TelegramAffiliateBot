@@ -22,6 +22,7 @@ __pycache__/
 *.db
 *.db-journal
 *.sqlite
+state.json
 
 # Logs
 *.log
