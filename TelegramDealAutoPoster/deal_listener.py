@@ -43,8 +43,33 @@ async def safe_send(client, target, *, text=None, parse_mode=None, media=None, c
             raise
 
 
+async def start_rss_sync_loop() -> None:
+    """Background task to periodically sync missing deals from https://techselect.blog/feed.xml."""
+    logger.info("✓ RSS Feed Sync Fallback active (Checking https://techselect.blog/feed.xml every 10 mins)")
+    while True:
+        try:
+            await asyncio.sleep(600)  # Check every 10 minutes
+            from rss_poster import sync_deals_from_rss, extract_asins_from_text
+            from x_poster import push_deal_to_x
+
+            rss_deals = sync_deals_from_rss()
+            for item in rss_deals:
+                asins = extract_asins_from_text(item["description"] + " " + item["link"])
+                if asins and not all(dedup_has(a) for a in asins):
+                    logger.info("RSS Sync: Found new deal in feed — ASINs=%s", asins)
+                    for a in asins:
+                        dedup_record(a)
+                    await push_deal_to_x(text=item["title"] + "\n" + item["description"], asins=asins)
+        except asyncio.CancelledError:
+            break
+        except Exception as exc:
+            logger.error("Error in periodic RSS sync loop: %s", exc)
+
+
 async def start_deal_listener(client: TelegramClient) -> None:
     """Register NewMessage handlers to listen to joined channels."""
+    # Start background RSS sync loop
+    asyncio.create_task(start_rss_sync_loop())
 
     me = await client.get_me()
     my_id = me.id
