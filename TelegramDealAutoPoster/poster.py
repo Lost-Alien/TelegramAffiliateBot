@@ -142,8 +142,9 @@ def post_next_from_csv() -> tuple[bool, str]:
     url = row[1] if len(row) > 1 else ""
     hashtags = row[2] if len(row) > 2 else "#TechDeals"
 
-    tweet_text = f"⚡ {title}\n\n🛒 {url}\n\n{hashtags}".strip()
+    tweet_text = f"⚡ {title}\n\n🛒 Check Price: {url}\n🌐 More Deals: https://techselect.blog\n\n{hashtags}".strip()
     if len(tweet_text) > 280:
+        # X t.co link counting replaces URLs with 23 chars; truncate title if total raw text exceeds 280
         tweet_text = tweet_text[:277] + "..."
 
     # Endpoint

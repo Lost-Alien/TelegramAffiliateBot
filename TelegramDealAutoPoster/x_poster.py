@@ -48,29 +48,30 @@ def clean_html_tags(raw_html: str) -> str:
 
 
 def format_tweet_text(text: str, asins: list[str], affiliate_tag: str = "techstor0caaf-21") -> str:
-    """Format deal text into a clean X post under 280 characters."""
+    """Format deal text into a clean X post under 280 characters, including site info."""
     clean_text = clean_html_tags(text)
     lines = [line.strip() for line in clean_text.split("\n") if line.strip()]
 
-    # Extract first line as title, removing starting emojis if present
+    # Extract first line as title
     title = lines[0] if lines else "Hot Tech Deal Alert!"
     
     # Target ASIN
     asin = asins[0] if asins else ""
     url = f"https://www.amazon.in/dp/{asin}?tag={affiliate_tag}" if asin else ""
+    website_url = "https://techselect.blog"
 
-    hashtags = "#TechDeals #AmazonIndia #TechSelect #Ad"
+    hashtags = "#TechDeals #TechSelect #Ad"
     
-    # X counts any t.co link as 23 chars
-    # Calculate available room for title: 280 - 23 (url) - len(hashtags) - spacing (~30 chars safety)
-    max_title_len = 180
+    # X counts any t.co link as 23 chars regardless of raw length.
+    # Budget: 280 total - 23 (amazon url) - 23 (techselect url) - 26 (hashtags) - 30 (labels/newlines) = ~178 chars for title
+    max_title_len = 170
     if len(title) > max_title_len:
         title = title[: max_title_len - 3] + "..."
 
     if url:
-        tweet = f"⚡ {title}\n\n🛒 Check Price on Amazon:\n{url}\n\n{hashtags}"
+        tweet = f"⚡ {title}\n\n🛒 Check Price: {url}\n🌐 More Deals: {website_url}\n\n{hashtags}"
     else:
-        tweet = f"⚡ {title}\n\n{hashtags}"
+        tweet = f"⚡ {title}\n\n🌐 More Deals: {website_url}\n\n{hashtags}"
 
     return tweet
 
