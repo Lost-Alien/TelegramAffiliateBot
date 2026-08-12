@@ -22,11 +22,13 @@ from pathlib import Path
 DASHBOARD_PORT = 7777
 ENV_FILE = Path(__file__).parent.parent / "TelegramDealAutoPoster" / ".env"
 EC2_HOST = "ubuntu@13.239.243.61"
-EC2_REMOTE_ENV = "/home/ubuntu/TelegramDealAutoPoster/.env"
+EC2_REMOTE_ENV = "/opt/telegrambot/app/TelegramDealAutoPoster/.env"
+EC2_REMOTE_XPOSTER = "/opt/telegrambot/app/TelegramDealAutoPoster/x_poster.py"
 EC2_CONTAINER = "telegram_deal_poster"
 GITHUB_REPO = "https://github.com/Lost-Alien/TelegramAffiliateBot.git"
 
 SSH_KEYS = [
+    str(Path(__file__).parent.parent / "TelegramBot-key.pem"),  # Primary EC2 key
     str(Path.home() / ".ssh" / "id_ed25519"),
     str(Path.home() / ".ssh" / "wabotkey-new"),
     str(Path.home() / ".ssh" / "id_rsa"),
@@ -97,6 +99,18 @@ def deploy_cookies(auth_token: str, ct0: str) -> list[dict]:
         ]
         ok, out = run_cmd(scp_cmd, timeout=20)
         steps.append({"name": "SCP .env → EC2", "ok": ok, "detail": out or "Done"})
+
+        # Step 2b: SCP x_poster.py to EC2 (XActions engine)
+        xposter_local = str(ENV_FILE.parent / "x_poster.py")
+        scp_xp = [
+            "scp", "-i", ssh_key,
+            "-o", "StrictHostKeyChecking=no",
+            "-o", "ConnectTimeout=10",
+            xposter_local,
+            f"{EC2_HOST}:{EC2_REMOTE_XPOSTER}",
+        ]
+        ok_xp, out_xp = run_cmd(scp_xp, timeout=20)
+        steps.append({"name": "SCP x_poster.py → EC2", "ok": ok_xp, "detail": out_xp or "Done"})
 
         # Step 3: Docker restart on EC2
         restart_cmd = [
