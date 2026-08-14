@@ -128,22 +128,16 @@ def clean_html_tags(raw_html: str) -> str:
 
 
 def format_tweet_text(text: str, asins: list[str], affiliate_tag: str = "techstor0caaf-21") -> str:
-    """Format deal text into a clean X post under 280 characters, including site info.
+    """Format deal text into a high-converting X post with Loot & Sale badges under 280 characters.
 
-    Tweet structure (from implementation_plan.md § 3.3):
+    Tweet structure:
+      🔥 MEGA LOOT SALE 💥
       ⚡ {Title}
 
-      🛒 Check Price: {amazon_url}
-      🌐 More Deals: https://techselect.blog
+      🛒 Grab Loot: {amazon_url}
+      🌐 Live Sales Hub: https://techselect.blog
 
-      #TechDeals #TechSelect #Ad
-
-    Character budget:
-      - X shortens all URLs to 23 chars (t.co)
-      - Amazon URL: 23 chars
-      - Website URL: 23 chars
-      - Hashtags + labels + newlines: ~46 chars
-      - Title budget: 170 chars → total ~210 chars (safe under 280)
+      #Loot #LootDeal #AmazonSale #TechDeals #Ad
     """
     clean_text = clean_html_tags(text)
     lines = [line.strip() for line in clean_text.split("\n") if line.strip()]
@@ -152,16 +146,42 @@ def format_tweet_text(text: str, asins: list[str], affiliate_tag: str = "techsto
     asin = asins[0] if asins else ""
     url = f"https://www.amazon.in/dp/{asin}?tag={affiliate_tag}" if asin else ""
     website_url = "https://techselect.blog"
-    hashtags = "#TechDeals #TechSelect #Ad"
 
-    max_title_len = 170
+    # Customizable header prefix and hashtags via environment variables or high-converting defaults
+    style = os.getenv("LOOT_SALES_STYLE", "loot_sale").lower().strip()
+    
+    if style == "loot":
+        header_prefix = "🔥 INSANE LOOT ALERT 💥"
+        hashtags = "#Loot #LootDeal #TechDeals #TechSelect #Ad"
+        cta_label = "🛒 Grab Loot"
+    elif style == "sale":
+        header_prefix = "🛍️ BIGGEST SALE PRICE DROP ⚡"
+        hashtags = "#AmazonSale #FlashSale #TechDeals #TechSelect #Ad"
+        cta_label = "🛒 Buy Sale Price"
+    elif style == "loot_deal":
+        header_prefix = "🚨 MEGA LOOT DEAL DROP! 🔥"
+        hashtags = "#LootDeal #Loot #AmazonSale #TechDeals #Ad"
+        cta_label = "🛒 Grab Loot"
+    else:  # default 'loot_sale'
+        header_prefix = "🔥 MEGA LOOT SALE 💥"
+        hashtags = "#Loot #LootDeal #AmazonSale #TechDeals #Ad"
+        cta_label = "🛒 Grab Loot"
+
+    # Allow custom override from env
+    header_prefix = os.getenv("DEAL_HEADER_PREFIX", header_prefix).strip()
+    hashtags = os.getenv("DEAL_HASHTAGS", hashtags).strip()
+
+    # Budget calculation: X counts URLs as 23 chars.
+    # Header: ~25 chars + Amazon URL: 23 + Website URL: 23 + Hashtags: ~45 + Labels: ~35 = ~150 chars overhead
+    # Remaining title budget: ~130 chars (safe total <= 280)
+    max_title_len = 130
     if len(title) > max_title_len:
         title = title[: max_title_len - 3] + "..."
 
     if url:
-        tweet = f"⚡ {title}\n\n🛒 Check Price: {url}\n🌐 More Deals: {website_url}\n\n{hashtags}"
+        tweet = f"{header_prefix}\n⚡ {title}\n\n{cta_label}: {url}\n🌐 Live Sales: {website_url}\n\n{hashtags}"
     else:
-        tweet = f"⚡ {title}\n\n🌐 More Deals: {website_url}\n\n{hashtags}"
+        tweet = f"{header_prefix}\n⚡ {title}\n\n🌐 Live Sales: {website_url}\n\n{hashtags}"
 
     return tweet
 

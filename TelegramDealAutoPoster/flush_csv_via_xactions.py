@@ -146,16 +146,21 @@ def xactions_post(tweet_text: str) -> tuple[bool, str]:
 
 
 def format_tweet(title: str, url: str, hashtags: str) -> str:
-    """Build tweet text under 280 chars."""
+    """Build high-converting tweet text with Loot & Sale badges under 280 chars."""
     title = title.strip()
-    max_title = 160
+    max_title = 130
     if len(title) > max_title:
         title = title[:max_title - 3] + "..."
 
+    # Use Loot & Sale hashtags if default hashtags provided
+    if hashtags == "#TechDeals #TechSelect #Ad" or not hashtags:
+        hashtags = "#Loot #LootDeal #AmazonSale #TechDeals #Ad"
+
     tweet = (
+        f"🔥 MEGA LOOT SALE 💥\n"
         f"⚡ {title}\n\n"
-        f"🛒 Buy Now: {url}\n"
-        f"🌐 More Deals: {WEBSITE_URL}\n\n"
+        f"🛒 Grab Loot: {url}\n"
+        f"🌐 Live Sales: {WEBSITE_URL}\n\n"
         f"{hashtags}"
     )
     return tweet
