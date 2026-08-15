@@ -38,3 +38,6 @@ state.json
 # Explicit secret files
 Whatsapp_credentials.csv
 TelegramBot-key.pem
+
+# Downloaded puzzle image cache
+TelegramDealAutoPoster/data/puzzle_images/
