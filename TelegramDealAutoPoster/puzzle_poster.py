@@ -376,21 +376,26 @@ def format_puzzle_tweet(puzzle: dict[str, Any]) -> str:
 
 
 def format_solution_reply(puzzle: dict[str, Any]) -> str:
-    """Format the solution reply tweet strictly without emojis."""
-    answer = puzzle.get("answer", "").strip()
-    if not answer or answer.upper() == "N/A":
+    """Format the solution reply tweet strictly without emojis and under 260 chars."""
+    raw_answer = puzzle.get("answer", "").strip()
+    if not raw_answer or raw_answer.upper() == "N/A":
         return ""
 
-    max_ans_len = 190
+    header = "PUZZLE SOLUTION & REASONING:"
+    footer = "Did you get it right? Follow @techselect_blog for daily puzzles!"
+    fixed_overhead = len(header) + len(footer) + len("Answer: ") + 8
+    max_ans_len = max(40, 260 - fixed_overhead)
+
+    answer = raw_answer
     if len(answer) > max_ans_len:
-        answer = answer[: max_ans_len - 3] + "..."
+        answer = answer[: max_ans_len - 3].rsplit(" ", 1)[0] + "..."
 
     lines = [
-        "PUZZLE SOLUTION & REASONING:",
+        header,
         "",
         f"Answer: {answer}",
         "",
-        "Did you get it right? Follow @techselect_blog for daily puzzles and brain workouts!",
+        footer,
     ]
     reply = "\n".join(lines).strip()
     return strip_emojis(reply)
