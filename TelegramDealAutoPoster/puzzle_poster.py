@@ -533,7 +533,8 @@ def post_puzzle(
         logger.error(f"❌ Failed to post main tweet for {pid}: {main_tweet_id}")
         return False
 
-    logger.info(f"✅ Main Tweet posted successfully! Tweet ID: {main_tweet_id}")
+    tweet_url = f"https://x.com/techselect_blog/status/{main_tweet_id}" if main_tweet_id and main_tweet_id != "OK" else "https://x.com/techselect_blog"
+    logger.info(f"✅ Main Tweet posted successfully! Tweet ID: {main_tweet_id}\n🔗 Live Post URL: {tweet_url}")
 
     # 4. Post Solution Reply (if available, strictly no emojis)
     reply_tweet_id = None
@@ -547,7 +548,8 @@ def post_puzzle(
         )
         if rok:
             reply_tweet_id = r_id
-            logger.info(f"✅ Solution reply posted in thread! Tweet ID: {reply_tweet_id}")
+            reply_url = f"https://x.com/techselect_blog/status/{reply_tweet_id}" if reply_tweet_id and reply_tweet_id != "OK" else "in thread"
+            logger.info(f"✅ Solution reply posted in thread! Tweet ID: {reply_tweet_id}\n🔗 Live Reply URL: {reply_url}")
         else:
             logger.warning(f"⚠️ Solution reply failed: {r_id}")
 
