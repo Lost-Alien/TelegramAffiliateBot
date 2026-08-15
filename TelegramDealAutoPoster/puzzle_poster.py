@@ -17,6 +17,7 @@ import base64
 import json
 import logging
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -245,66 +246,154 @@ def post_tweet_graphql(
 
 
 # ============================================================================
-# Formatting Templates
+# Emoji Stripper & Text Utilities
+# ============================================================================
+
+def strip_emojis(text: str) -> str:
+    """Remove all emojis and unicode pictographs from text."""
+    emoji_pattern = re.compile(
+        "["
+        "\U0001F600-\U0001F64F"  # emoticons
+        "\U0001F300-\U0001F5FF"  # symbols & pictographs
+        "\U0001F680-\U0001F6FF"  # transport & map symbols
+        "\U0001F1E0-\U0001F1FF"  # flags
+        "\U00002700-\U000027BF"  # dingbats
+        "\U00002600-\U000026FF"  # misc symbols
+        "\U0001F900-\U0001F9FF"  # supplemental symbols
+        "\U0001FA00-\U0001FAFF"  # symbols
+        "]+",
+        flags=re.UNICODE,
+    )
+    clean = emoji_pattern.sub("", text)
+    lines = [re.sub(r" +", " ", l).strip() for l in clean.split("\n")]
+    return "\n".join(lines).strip()
+
+
+# ============================================================================
+# Image Watermark Engine (TechSelect Logo on Bottom-Right Corner)
+# ============================================================================
+
+def get_logo_path() -> Path | None:
+    """Locate TechSelect logo file."""
+    candidates = [
+        BASE_DIR / "logo.png",
+        BASE_DIR.parent / "logo.png",
+        Path("/app/logo.png"),
+    ]
+    for p in candidates:
+        if p.exists() and p.stat().st_size > 100:
+            return p
+    return None
+
+
+def apply_techselect_watermark(image_path: Path | str, output_path: Path | str | None = None) -> Path:
+    """Overlay TechSelect logo at the bottom-right corner of puzzle image.
+
+    Returns the path to the watermarked image (or original image if logo is missing or PIL unavailable).
+    """
+    in_path = Path(image_path)
+    logo_path = get_logo_path()
+
+    if not logo_path or not in_path.exists():
+        return in_path
+
+    try:
+        from PIL import Image, ImageDraw
+
+        out_file = Path(output_path) if output_path else in_path.parent / f"wm_{in_path.name}"
+
+        base_img = Image.open(in_path).convert("RGBA")
+        logo_img = Image.open(logo_path).convert("RGBA")
+
+        bw, bh = base_img.size
+        # Target logo width: ~14% of base image width (min 70px, max 160px)
+        logo_w = max(70, min(160, int(bw * 0.14)))
+        logo_h = int(logo_w * (logo_img.size[1] / logo_img.size[0]))
+
+        logo_resized = logo_img.resize((logo_w, logo_h), Image.Resampling.LANCZOS)
+
+        # Rounded corner mask for clean appearance
+        mask = Image.new("L", (logo_w, logo_h), 0)
+        draw = ImageDraw.Draw(mask)
+        draw.rounded_rectangle([(0, 0), (logo_w, logo_h)], radius=int(logo_w * 0.15), fill=255)
+
+        # Position at bottom-right corner with responsive margin
+        margin = max(15, int(bw * 0.025))
+        pos_x = bw - logo_w - margin
+        pos_y = bh - logo_h - margin
+
+        base_img.paste(logo_resized, (pos_x, pos_y), mask)
+
+        final_rgb = base_img.convert("RGB")
+        final_rgb.save(out_file, "JPEG", quality=95)
+        logger.info(f"✨ Applied TechSelect logo watermark at bottom-right -> {out_file.name}")
+        return out_file
+
+    except Exception as e:
+        logger.warning(f"Watermarking skipped due to error: {e}")
+        return in_path
+
+
+# ============================================================================
+# Formatting Templates (Strictly No Emojis)
 # ============================================================================
 
 def format_puzzle_tweet(puzzle: dict[str, Any]) -> str:
-    """Format the primary puzzle tweet strictly under Twitter's 280-character limit."""
+    """Format the primary puzzle tweet strictly without emojis and under 280 chars."""
     category = puzzle.get("category", "Brain Puzzle").split(",")[0].strip()
     raw_question = puzzle.get("question", "").strip()
 
-    header = "🧠 BRAIN TEASER CHALLENGE! 💥"
-    sub_header = f"🧩 [{category}]"
-    cta = "👇 Drop your answer below!\n💡 Solution in thread 👇"
-    hashtags = "#BrainTeaser #Puzzle #MathPuzzle #IQTest #SmartBrain"
+    header = "BRAIN TEASER CHALLENGE"
+    sub_header = f"[{category}]"
+    cta = "Can you solve this? Look at the image and drop your answer in the comments.\nSolution is revealed in the thread below."
+    hashtags = "#BrainTeaser #Puzzle #MathPuzzle #IQTest #SmartBrain #TechSelect"
 
-    # Fixed overhead: ~150 chars
-    fixed_overhead = len(header) + len(sub_header) + len(cta) + len(hashtags) + 8
-    allowed_q_len = max(40, 260 - fixed_overhead)
+    # Overhead calculation
+    fixed_overhead = len(header) + len(sub_header) + len(cta) + len(hashtags) + 10
+    allowed_q_len = max(30, 260 - fixed_overhead)
 
     question = raw_question
-    if len(question) > allowed_q_len:
+    if question and len(question) > allowed_q_len:
         question = question[: allowed_q_len - 3].rsplit(" ", 1)[0] + "..."
 
     lines = [
         header,
         sub_header,
         "",
-        question if question else "Can you solve this puzzle?",
-        "",
+    ]
+    if question:
+        lines.append(question)
+        lines.append("")
+
+    lines.extend([
         cta,
         "",
         hashtags,
-    ]
+    ])
+
     tweet = "\n".join(lines).strip()
-
-    # Safety clamp: if still over 270 (due to multi-byte emojis), truncate safely
-    if len(tweet) > 270:
-        lines[3] = "Can you solve this puzzle?"
-        tweet = "\n".join(lines).strip()
-
-    return tweet
+    return strip_emojis(tweet)
 
 
 def format_solution_reply(puzzle: dict[str, Any]) -> str:
-    """Format the solution reply tweet."""
+    """Format the solution reply tweet strictly without emojis."""
     answer = puzzle.get("answer", "").strip()
     if not answer or answer.upper() == "N/A":
         return ""
 
-    # Truncate answer if very long to stay under 280 chars
     max_ans_len = 190
     if len(answer) > max_ans_len:
         answer = answer[: max_ans_len - 3] + "..."
 
     lines = [
-        "💡 PUZZLE SOLUTION & REASONING:",
+        "PUZZLE SOLUTION & REASONING:",
         "",
-        f"✅ {answer}",
+        f"Answer: {answer}",
         "",
-        "Did you get it right? 🔥 Follow for daily brain workouts! 🧠",
+        "Did you get it right? Follow @techselect_blog for daily puzzles and brain workouts!",
     ]
-    return "\n".join(lines).strip()
+    reply = "\n".join(lines).strip()
+    return strip_emojis(reply)
 
 
 # ============================================================================
@@ -401,17 +490,31 @@ def post_puzzle(
     if reply_text:
         logger.info(f"Reply Tweet:\n{reply_text}\n")
 
+    # 1. Apply TechSelect Logo Watermark on Bottom-Right Corner
+    upload_target = apply_techselect_watermark(local_path)
+    is_temp_wm = upload_target != local_path
+
     if dry_run:
-        logger.info(f"🧪 [DRY-RUN] Would upload {local_path.name} and post to X. Skipping actual post.")
+        logger.info(f"🧪 [DRY-RUN] Would upload {upload_target.name} (with TechSelect watermark) and post to X. Skipping actual post.")
+        if is_temp_wm and upload_target.exists():
+            upload_target.unlink()
         return True
 
-    # 1. Upload Media
-    media_id = upload_image_to_twitter(local_path, auth_token, ct0)
+    # 2. Upload Media to Twitter
+    media_id = upload_image_to_twitter(upload_target, auth_token, ct0)
+
+    # Clean up temporary watermarked image immediately after upload
+    if is_temp_wm and upload_target.exists():
+        try:
+            upload_target.unlink()
+        except Exception:
+            pass
+
     if not media_id:
         logger.error(f"❌ Failed to upload image for {pid}. Aborting post.")
         return False
 
-    # 2. Post Main Tweet with Image
+    # 3. Post Main Tweet with Image (Strictly No Emojis)
     ok, main_tweet_id = post_tweet_graphql(
         text=tweet_text,
         auth_token=auth_token,
@@ -425,7 +528,7 @@ def post_puzzle(
 
     logger.info(f"✅ Main Tweet posted successfully! Tweet ID: {main_tweet_id}")
 
-    # 3. Post Solution Reply (if available)
+    # 4. Post Solution Reply (if available, strictly no emojis)
     reply_tweet_id = None
     if reply_text and main_tweet_id and main_tweet_id != "OK":
         time.sleep(2)  # brief pause before thread reply
@@ -441,7 +544,7 @@ def post_puzzle(
         else:
             logger.warning(f"⚠️ Solution reply failed: {r_id}")
 
-    # 4. Update Dataset Record
+    # 5. Update Dataset Record
     all_puzzles = load_puzzles_dataset()
     now_iso = datetime.now(timezone.utc).isoformat()
     for p in all_puzzles:
@@ -453,7 +556,7 @@ def post_puzzle(
 
     save_puzzles_dataset(all_puzzles)
 
-    # 5. AWS Disk Cleanup (Remove image after successful post)
+    # 6. AWS Disk Cleanup (Remove source image after successful post)
     if clean_image_after:
         delete_local_image(puzzle)
 
