@@ -220,13 +220,15 @@ def post_tweet_graphql(
             or resp_data.get("data", {}).get("create_tweet")
         )
 
-        if tweet_result:
+        if tweet_result and isinstance(tweet_result, dict):
             tweet_id = str(
                 tweet_result.get("rest_id")
                 or tweet_result.get("legacy", {}).get("id_str")
-                or "OK"
+                or (tweet_result.get("edit_control", {}).get("edit_tweet_ids", [None])[0])
+                or ""
             )
-            return True, tweet_id
+            if tweet_id and tweet_id != "None":
+                return True, tweet_id
 
         errors = resp_data.get("errors", [])
         if errors:
@@ -335,30 +337,52 @@ def apply_techselect_watermark(image_path: Path | str, output_path: Path | str |
 
 
 # ============================================================================
-# Formatting Templates (Strictly No Emojis)
+# Formatting Templates (Strictly No Emojis & Provocative IQ Hooks)
 # ============================================================================
 
+PROVOCATIVE_HOOKS = [
+    "If you solve this, your intelligence level is above average.",
+    "95% of people fail to solve this in under 30 seconds. Can you?",
+    "Only the top 1% logical minds can crack this on the first try.",
+    "If you find the answer without checking the comments, your IQ is elite.",
+    "This looks deceptively simple, but most adults get it completely wrong.",
+]
+
+
+def get_provocative_hook(puzzle_id: str) -> str:
+    """Select a provocative hook based on puzzle ID hash."""
+    idx = sum(ord(c) for c in puzzle_id) % len(PROVOCATIVE_HOOKS)
+    return PROVOCATIVE_HOOKS[idx]
+
+
 def format_puzzle_tweet(puzzle: dict[str, Any]) -> str:
-    """Format the primary puzzle tweet strictly without emojis and under 280 chars."""
+    """Format the primary puzzle tweet strictly without emojis and under 260 chars."""
     category = puzzle.get("category", "Brain Puzzle").split(",")[0].strip()
     raw_question = puzzle.get("question", "").strip()
+    pid = str(puzzle.get("id", "1"))
 
+    hook = get_provocative_hook(pid)
     header = "BRAIN TEASER CHALLENGE"
     sub_header = f"[{category}]"
-    cta = "Can you solve this? Look at the image and drop your answer in the comments.\nSolution is revealed in the thread below."
-    hashtags = "#BrainTeaser #Puzzle #MathPuzzle #IQTest #SmartBrain #TechSelect"
+    cta = "Drop your answer below! Correct answer is in the comments."
+    hashtags = "#BrainTeaser #IQTest #Puzzle #TechSelect"
 
-    # Overhead calculation
-    fixed_overhead = len(header) + len(sub_header) + len(cta) + len(hashtags) + 10
-    allowed_q_len = max(30, 260 - fixed_overhead)
+    # Strict overhead calculation
+    fixed_overhead = len(header) + len(sub_header) + len(hook) + len(cta) + len(hashtags) + 12
+    allowed_q_len = max(0, 255 - fixed_overhead)
 
     question = raw_question
-    if question and len(question) > allowed_q_len:
-        question = question[: allowed_q_len - 3].rsplit(" ", 1)[0] + "..."
+    if allowed_q_len > 35 and question:
+        if len(question) > allowed_q_len:
+            question = question[: allowed_q_len - 3].rsplit(" ", 1)[0] + "..."
+    else:
+        question = ""  # Hook carries the tweet cleanly
 
     lines = [
         header,
         sub_header,
+        "",
+        hook,
         "",
     ]
     if question:
@@ -372,17 +396,20 @@ def format_puzzle_tweet(puzzle: dict[str, Any]) -> str:
     ])
 
     tweet = "\n".join(lines).strip()
+    # Hard clamp safety
+    if len(tweet) > 265:
+        tweet = f"{header}\n{sub_header}\n\n{hook}\n\n{cta}\n\n{hashtags}"
     return strip_emojis(tweet)
 
 
 def format_solution_reply(puzzle: dict[str, Any]) -> str:
-    """Format the solution reply tweet strictly without emojis and under 260 chars."""
+    """Format the solution comment reply strictly without emojis and under 260 chars."""
     raw_answer = puzzle.get("answer", "").strip()
     if not raw_answer or raw_answer.upper() == "N/A":
         return ""
 
-    header = "PUZZLE SOLUTION & REASONING:"
-    footer = "Did you get it right? Follow @techselect_blog for daily puzzles!"
+    header = "CORRECT ANSWER & EXPLANATION:"
+    footer = "Did you get it right? Follow @techselect_blog for daily IQ challenges!"
     fixed_overhead = len(header) + len(footer) + len("Answer: ") + 8
     max_ans_len = max(40, 260 - fixed_overhead)
 
