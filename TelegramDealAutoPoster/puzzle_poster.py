@@ -423,8 +423,8 @@ def delete_local_image(puzzle: dict[str, Any]) -> bool:
     return False
 
 
-def cleanup_posted_images() -> int:
-    """Routine check: purge all cached image files for already-posted puzzles."""
+def cleanup_posted_images(purge_all: bool = False) -> int:
+    """Routine check: purge cached image files for posted puzzles (or all cached images if purge_all=True)."""
     from puzzle_scraper import load_puzzles_dataset
 
     puzzles = load_puzzles_dataset()
@@ -436,9 +436,8 @@ def cleanup_posted_images() -> int:
     if IMAGES_DIR.exists():
         for file in IMAGES_DIR.iterdir():
             if file.is_file():
-                # Check if this file belongs to a posted puzzle
                 file_stem = file.stem
-                if file_stem in posted_ids or file.stat().st_size == 0:
+                if purge_all or file_stem in posted_ids or file.stat().st_size == 0 or file.name.startswith("wm_"):
                     try:
                         sz = file.stat().st_size
                         file.unlink()
@@ -476,12 +475,13 @@ def post_puzzle(
     # Check local image or download on-demand
     local_rel = puzzle.get("local_image", f"data/puzzle_images/{pid}.jpg")
     local_path = BASE_DIR / local_rel
+    downloaded_fresh = False
 
     if not local_path.exists():
         img_url = puzzle.get("image_url", "")
         if img_url:
             logger.info(f"Image not on disk for {pid}, downloading from {img_url}...")
-            download_puzzle_image(img_url, local_path)
+            downloaded_fresh = download_puzzle_image(img_url, local_path)
 
     if not local_path.exists():
         logger.error(f"Cannot post {pid}: Image file missing and download failed.")
@@ -503,6 +503,8 @@ def post_puzzle(
         logger.info(f"🧪 [DRY-RUN] Would upload {upload_target.name} (with TechSelect watermark) and post to X. Skipping actual post.")
         if is_temp_wm and upload_target.exists():
             upload_target.unlink()
+        if downloaded_fresh and clean_image_after and local_path.exists():
+            local_path.unlink()
         return True
 
     # 2. Upload Media to Twitter
@@ -630,6 +632,7 @@ def main() -> None:
     parser.add_argument("--post-one", action="store_true", help="Post next unposted puzzle")
     parser.add_argument("--post-id", type=str, help="Post specific puzzle by ID")
     parser.add_argument("--cleanup", action="store_true", help="Run routine check and purge posted images from AWS server")
+    parser.add_argument("--purge-all", action="store_true", help="Purge all cached images regardless of status")
     parser.add_argument("--dry-run", action="store_true", help="Dry run without publishing tweet")
     parser.add_argument("--auto", action="store_true", help="Run automatic scheduler loop")
     parser.add_argument("--interval", type=int, default=3600, help="Interval in seconds for auto scheduler (default 3600s)")
@@ -641,8 +644,8 @@ def main() -> None:
         scrape_all_puzzles(download_images=True)
         return
 
-    if args.cleanup:
-        cleanup_posted_images()
+    if args.cleanup or args.purge_all:
+        cleanup_posted_images(purge_all=args.purge_all)
         return
 
     if args.status:
