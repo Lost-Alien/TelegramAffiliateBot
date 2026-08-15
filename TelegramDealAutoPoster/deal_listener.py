@@ -128,25 +128,17 @@ async def start_deal_listener(client: TelegramClient) -> None:
         has_amazon, updated_text, asins = await process_deal_text(
             text=text, default_domain=config.DEFAULT_AMAZON_DOMAIN
         )
-
-        from cuelinks_converter import is_cuelinks_supported, monetize_all_links_in_text
-        has_cuelinks = False
-        if not has_amazon and is_cuelinks_supported(text):
-            updated_text = monetize_all_links_in_text(text, sub_id="telegram_deals")
-            has_cuelinks = True
-
-        if not (has_amazon or has_cuelinks):
+        if not has_amazon:
             return
 
-        if asins:
-            state.record_detected(asins, source_id=event.chat_id, source_title=chat_title)
+        state.record_detected(asins, source_id=event.chat_id, source_title=chat_title)
 
-            if all(dedup_has(a) for a in asins):
-                logger.info("Skipping duplicate deal from %s — ASINs %s already posted", event.chat_id, asins)
-                state.record_skipped(asins)
-                return
+        if asins and all(dedup_has(a) for a in asins):
+            logger.info("Skipping duplicate deal from %s — ASINs %s already posted", event.chat_id, asins)
+            state.record_skipped(asins)
+            return
 
-        logger.info("Deal extracted from %s — ASINs=%s (Amazon=%s, Cuelinks=%s)", event.chat_id, asins, has_amazon, has_cuelinks)
+        logger.info("Deal extracted from %s — ASINs=%s", event.chat_id, asins)
 
         await _RATE_LIMITER.acquire()
 
