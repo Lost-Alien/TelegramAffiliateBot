@@ -29,6 +29,7 @@ from typing import Any, Dict, List, Optional
 from twikit import Client
 
 from x_commenter.config_x import COOKIES_PATH, TWITTER_AUTH_TOKEN, TWITTER_CT0
+from x_commenter.poster import get_cookie_credentials
 
 logger = logging.getLogger("x_commenter.account_fallback")
 
@@ -37,8 +38,10 @@ def _build_client() -> Optional[Client]:
     """Builds a fresh authenticated twikit client from existing cookies (no network I/O yet)."""
     client = Client(language="en-US")
     try:
-        if TWITTER_AUTH_TOKEN and TWITTER_CT0:
-            client.set_cookies({"auth_token": TWITTER_AUTH_TOKEN, "ct0": TWITTER_CT0})
+        creds = get_cookie_credentials()
+        if creds:
+            auth_token, ct0 = creds
+            client.set_cookies({"auth_token": auth_token, "ct0": ct0})
         elif COOKIES_PATH.is_file():
             client.load_cookies(str(COOKIES_PATH))
         else:

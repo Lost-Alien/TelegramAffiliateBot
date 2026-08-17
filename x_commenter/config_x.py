@@ -11,20 +11,28 @@ from dotenv import load_dotenv
 env_path = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
+def _clean_env(key: str, default: str = "") -> str:
+    """Retrieve an env var stripped of whitespace, quotes, and UTF-8 BOM characters."""
+    raw = os.getenv(key, default)
+    if not raw:
+        return default
+    return str(raw).strip().strip("\ufeff\u200b\r\n\t'\" ").strip()
+
+
 # ==========================================
 # Exa AI API Configuration
 # ==========================================
-EXA_API_KEY = os.getenv("EXA_API_KEY", "ddffd3ea-5e2d-44b4-90b4-257d62150788").strip()
+EXA_API_KEY = _clean_env("EXA_API_KEY", "ddffd3ea-5e2d-44b4-90b4-257d62150788")
 
 # ==========================================
 # Twitter / X Cookie Auth Credentials (@techselect_blog)
 # ==========================================
 # Option 1: Direct Cookie Tokens from Chrome DevTools (Fastest & Easiest)
-TWITTER_AUTH_TOKEN = os.getenv("TWITTER_AUTH_TOKEN", "").strip()
-TWITTER_CT0 = os.getenv("TWITTER_CT0", "").strip()
+TWITTER_AUTH_TOKEN = _clean_env("TWITTER_AUTH_TOKEN", "")
+TWITTER_CT0 = _clean_env("TWITTER_CT0", "")
 
 # Option 2: Base64 encoded cookies.json from GitHub Secrets
-TWITTER_COOKIES_B64 = os.getenv("TWITTER_COOKIES_B64", "").strip()
+TWITTER_COOKIES_B64 = _clean_env("TWITTER_COOKIES_B64", "")
 
 # Local/runtime cookie file path
 COOKIES_PATH = Path(__file__).resolve().parent / "cookies.json"
@@ -33,8 +41,8 @@ COOKIES_PATH = Path(__file__).resolve().parent / "cookies.json"
 # ==========================================
 # Upstash Redis Configuration
 # ==========================================
-UPSTASH_REDIS_REST_URL = os.getenv("UPSTASH_REDIS_REST_URL", "").strip()
-UPSTASH_REDIS_REST_TOKEN = os.getenv("UPSTASH_REDIS_REST_TOKEN", "").strip()
+UPSTASH_REDIS_REST_URL = _clean_env("UPSTASH_REDIS_REST_URL", "")
+UPSTASH_REDIS_REST_TOKEN = _clean_env("UPSTASH_REDIS_REST_TOKEN", "")
 
 # ==========================================
 # Safety & Rate Limits (Safe Pacing: 50 replies/day total, XActions Architecture)
