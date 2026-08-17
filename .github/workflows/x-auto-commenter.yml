@@ -41,14 +41,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Decode X Session Cookies
-        if: ${{ env.TWITTER_COOKIES_B64 != '' }}
-        env:
-          TWITTER_COOKIES_B64: ${{ secrets.TWITTER_COOKIES_B64 }}
-        run: |
-          echo "$TWITTER_COOKIES_B64" | base64 -d > x_commenter/cookies.json
-          chmod 600 x_commenter/cookies.json || true
-
       - name: Execute X Commenter Session
         env:
           EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
@@ -68,3 +60,4 @@ jobs:
         if: always()
         run: |
           rm -f x_commenter/cookies.json cookies.json
+
