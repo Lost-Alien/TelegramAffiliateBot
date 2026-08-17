@@ -161,19 +161,27 @@ def post_reply_sync(reply_text: str, in_reply_to_tweet_id: Optional[str] = None)
 
         if response.status_code == 200:
             res_data = response.json()
-            # Extract posted tweet ID from GraphQL response
-            try:
-                tweet_res = (
-                    res_data.get("data", {})
-                    .get("create_tweet", {})
-                    .get("tweet_results", {})
-                    .get("result", {})
-                )
-                posted_id = tweet_res.get("rest_id") or "unknown"
-                logger.info(f"Successfully posted reply via Cookie Auth! New Tweet ID: {posted_id}")
-            except Exception:
-                logger.info("Successfully posted reply via Cookie Auth!")
-            return True
+            errors = res_data.get("errors", [])
+            if errors:
+                first_err = errors[0]
+                err_msg = first_err.get("message", "Unknown GraphQL error")
+                err_code = first_err.get("code")
+                logger.error(f"X GraphQL error during posting (code {err_code}): {err_msg}")
+                return False
+
+            tweet_res = (
+                res_data.get("data", {})
+                .get("create_tweet", {})
+                .get("tweet_results", {})
+                .get("result", {})
+            )
+            posted_id = tweet_res.get("rest_id")
+            if posted_id:
+                logger.info(f"Successfully posted reply via Cookie Auth! Tweet URL: https://x.com/techselect_blog/status/{posted_id}")
+                return True
+            else:
+                logger.warning(f"Unexpected response structure: {res_data}")
+                return False
         else:
             logger.error(
                 f"Failed to post reply (HTTP {response.status_code}): {response.text[:300]}"

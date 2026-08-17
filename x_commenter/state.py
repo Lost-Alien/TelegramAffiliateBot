@@ -151,8 +151,13 @@ def increment_daily_count() -> int:
     redis_key = f"{DAILY_COUNTER_KEY}:{today_key}"
 
     # 1. Upstash Redis
-    _redis_command("INCR", redis_key)
+    res = _redis_command("INCR", redis_key)
     _redis_command("EXPIRE", redis_key, 86400 * 2)  # 48 hours TTL
+    if res is not None:
+        try:
+            return int(res)
+        except (ValueError, TypeError):
+            pass
 
     # 2. Local fallback
     try:
@@ -174,3 +179,4 @@ def increment_daily_count() -> int:
     except Exception as exc:
         logger.error(f"Failed to increment local daily count: {exc}")
         return 1
+
