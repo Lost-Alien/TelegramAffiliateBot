@@ -13,6 +13,8 @@ from twikit import Client
 from twikit.errors import TwitterException
 
 from x_commenter.config_x import (
+    TWITTER_AUTH_TOKEN,
+    TWITTER_CT0,
     TWITTER_COOKIES_B64,
     COOKIES_PATH,
     DRY_RUN,
@@ -50,28 +52,46 @@ def ensure_cookies_file() -> Optional[Path]:
 async def get_twikit_client() -> Optional[Client]:
     """
     Initializes and authenticates a Twikit Client using session cookies.
+    Supports:
+    1. Direct TWITTER_AUTH_TOKEN + TWITTER_CT0 env vars (Chrome DevTools copy-paste)
+    2. TWITTER_COOKIES_B64 / cookies.json file
     """
     global _client
     if _client is not None:
         return _client
 
-    cookie_file = ensure_cookies_file()
-    if not cookie_file:
-        logger.error(
-            "Missing X session cookies! Please run 'python -m x_commenter.login_helper' "
-            "or set TWITTER_COOKIES_B64 in your environment/secrets."
-        )
-        return None
+    client = Client(language="en-US")
 
-    try:
-        client = Client(language="en-US")
-        client.load_cookies(str(cookie_file))
-        _client = client
-        logger.info("Twikit Client authenticated successfully with session cookies.")
-        return _client
-    except Exception as exc:
-        logger.error(f"Failed to authenticate Twikit Client: {exc}")
-        return None
+    # Priority 1: Direct auth_token and ct0 from Chrome DevTools
+    if TWITTER_AUTH_TOKEN and TWITTER_CT0:
+        try:
+            client.set_cookies({
+                "auth_token": TWITTER_AUTH_TOKEN,
+                "ct0": TWITTER_CT0,
+            })
+            _client = client
+            logger.info("Twikit Client authenticated with direct auth_token & ct0 cookies.")
+            return _client
+        except Exception as exc:
+            logger.error(f"Failed setting direct cookies: {exc}")
+
+    # Priority 2: Cookie file or decoded Base64 cookies
+    cookie_file = ensure_cookies_file()
+    if cookie_file:
+        try:
+            client.load_cookies(str(cookie_file))
+            _client = client
+            logger.info("Twikit Client authenticated successfully with session cookies file.")
+            return _client
+        except Exception as exc:
+            logger.error(f"Failed to authenticate Twikit Client from cookies file: {exc}")
+
+    logger.error(
+        "Missing X session cookies! Please set TWITTER_AUTH_TOKEN and TWITTER_CT0 in your environment/secrets, "
+        "or run 'python -m x_commenter.login_helper'."
+    )
+    return None
+
 
 
 async def async_post_reply(reply_text: str, in_reply_to_tweet_id: Optional[str] = None) -> bool:

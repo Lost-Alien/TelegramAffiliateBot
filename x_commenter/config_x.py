@@ -19,11 +19,16 @@ EXA_API_KEY = os.getenv("EXA_API_KEY", "ddffd3ea-5e2d-44b4-90b4-257d62150788").s
 # ==========================================
 # Twitter / X Cookie Auth Credentials (@techselect_blog)
 # ==========================================
-# Base64 encoded cookies.json from GitHub Secrets
+# Option 1: Direct Cookie Tokens from Chrome DevTools (Fastest & Easiest)
+TWITTER_AUTH_TOKEN = os.getenv("TWITTER_AUTH_TOKEN", "").strip()
+TWITTER_CT0 = os.getenv("TWITTER_CT0", "").strip()
+
+# Option 2: Base64 encoded cookies.json from GitHub Secrets
 TWITTER_COOKIES_B64 = os.getenv("TWITTER_COOKIES_B64", "").strip()
 
 # Local/runtime cookie file path
 COOKIES_PATH = Path(__file__).resolve().parent / "cookies.json"
+
 
 # ==========================================
 # Upstash Redis Configuration

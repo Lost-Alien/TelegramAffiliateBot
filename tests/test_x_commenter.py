@@ -240,3 +240,23 @@ async def test_twikit_async_post_reply_mock():
             text="OnePlus 13 vs iQOO 13 at ₹54,999: 6000mAh battery makes the difference.",
             reply_to="188273645192837465",
         )
+
+
+# ==========================================
+# 13. Direct auth_token and ct0 Authentication
+# ==========================================
+@pytest.mark.asyncio
+async def test_poster_direct_auth_token_and_ct0_initialization():
+    """Test 13: Verify get_twikit_client sets cookies from TWITTER_AUTH_TOKEN and TWITTER_CT0."""
+    from x_commenter.poster import get_twikit_client
+    with patch("x_commenter.poster.TWITTER_AUTH_TOKEN", "dummy_auth_token_12345"), \
+         patch("x_commenter.poster.TWITTER_CT0", "dummy_ct0_67890"), \
+         patch("x_commenter.poster._client", None), \
+         patch("twikit.Client.set_cookies") as mock_set_cookies:
+        client = await get_twikit_client()
+        assert client is not None
+        mock_set_cookies.assert_called_once_with({
+            "auth_token": "dummy_auth_token_12345",
+            "ct0": "dummy_ct0_67890",
+        })
+
