@@ -119,6 +119,14 @@ def _create_tweet_sync(
 
     auth_token, ct0 = creds
 
+    # Dynamic Contextual Referer & Full Chrome 124 Browser Headers
+    if in_reply_to_tweet_id:
+        referer_url = f"https://x.com/i/status/{in_reply_to_tweet_id}"
+    elif attachment_url:
+        referer_url = attachment_url
+    else:
+        referer_url = "https://x.com/compose/post"
+
     headers = {
         "authorization": f"Bearer {BEARER_TOKEN}",
         "x-csrf-token": ct0,
@@ -126,8 +134,17 @@ def _create_tweet_sync(
         "x-twitter-auth-type": "OAuth2Session",
         "x-twitter-client-language": "en",
         "content-type": "application/json",
-        "referer": "https://x.com/",
+        "accept": "*/*",
+        "accept-language": "en-US,en;q=0.9",
+        "referer": referer_url,
         "origin": "https://x.com",
+        "sec-ch-ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"',
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-origin",
+        "priority": "u=1, i",
     }
 
     cookies = {

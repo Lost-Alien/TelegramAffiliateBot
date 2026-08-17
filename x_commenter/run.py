@@ -45,8 +45,11 @@ logger = logging.getLogger("x_commenter")
 
 
 def _human_pause():
-    delay = MIN_DELAY_BETWEEN_REPLIES_SEC + random.randint(10, 45)
-    logger.info(f"Waiting {delay}s before next action to maintain human pacing...")
+    # XActions randomized micro-jitter pacing
+    base = MIN_DELAY_BETWEEN_REPLIES_SEC
+    jitter = base * 0.25 * (random.random() - 0.5)
+    delay = max(15, int(base + jitter + random.randint(5, 20)))
+    logger.info(f"Waiting {delay}s before next action to maintain natural human pacing...")
     time.sleep(delay)
 
 
@@ -184,7 +187,28 @@ def run_session() -> int:
                 logger.error("Failed to post quote-repost. Moving to next candidate.")
         else:
             success = post_reply(reply_text=gen_text, in_reply_to_tweet_id=tweet_id)
-            if success:
+            if not success and tweet_id:
+                logger.info("Direct in-reply post failed (anti-automation/Code 226). Trying quote-repost fallback...")
+                if tweet_url:
+                    success = post_quote_tweet(comment_text=gen_text, quoted_tweet_url=tweet_url)
+                    if success:
+                        mark_quoted(tweet_id, gen_text)
+                        quoted_count += 1
+                        new_q_count = increment_quote_daily_count()
+                        logger.info(f"Quote-repost fallback succeeded! (Daily total: {new_q_count}/{MAX_QUOTE_REPOSTS_PER_DAY})")
+                        if posted_count < target_replies or quoted_count < target_quotes:
+                            _human_pause()
+                if not success:
+                    logger.info("Trying standalone market commentary post fallback...")
+                    success = post_reply(reply_text=gen_text, in_reply_to_tweet_id=None)
+                    if success:
+                        mark_replied(tweet_id, gen_text)
+                        posted_count += 1
+                        new_count = increment_daily_count()
+                        logger.info(f"Standalone post fallback succeeded! (Daily total: {new_count}/{MAX_REPLIES_PER_DAY})")
+                        if posted_count < target_replies or quoted_count < target_quotes:
+                            _human_pause()
+            elif success:
                 if tweet_id:
                     mark_replied(tweet_id, gen_text)
                 if author:
@@ -195,7 +219,7 @@ def run_session() -> int:
                 if posted_count < target_replies or quoted_count < target_quotes:
                     _human_pause()
             else:
-                logger.error("Failed to post reply. Moving to next candidate.")
+                logger.error("Failed to post reply and all fallbacks exhausted. Moving to next candidate.")
 
     logger.info(f"=== Session Completed: {posted_count} replies + {quoted_count} quote-repost(s) posted ===")
     return posted_count + quoted_count
