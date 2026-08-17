@@ -212,51 +212,50 @@ def test_scanner_filtering_already_replied():
 def test_poster_missing_cookies_handled_gracefully():
     """Test 11: Verify poster fails gracefully when no cookies are available and DRY_RUN is False."""
     with patch("x_commenter.poster.DRY_RUN", False), \
-         patch("x_commenter.poster.ensure_cookies_file", return_value=None), \
-         patch("x_commenter.poster._client", None):
+         patch("x_commenter.poster.get_cookie_credentials", return_value=None):
         success = post_reply("Testing missing cookies", in_reply_to_tweet_id="123456789")
         assert success is False
 
 
 # ==========================================
-# 12. Twikit Client Posting Mock
+# 12. Direct auth_token and ct0 Credential Extraction
 # ==========================================
-@pytest.mark.asyncio
-async def test_twikit_async_post_reply_mock():
-    """Test 12: Verify async_post_reply calls twikit create_tweet with text and reply_to."""
-    mock_client = AsyncMock()
-    mock_tweet = MagicMock()
-    mock_tweet.id = "1928374650192837465"
-    mock_client.create_tweet.return_value = mock_tweet
+def test_poster_direct_auth_token_and_ct0_extraction():
+    """Test 12: Verify get_cookie_credentials extracts credentials from TWITTER_AUTH_TOKEN and TWITTER_CT0."""
+    from x_commenter.poster import get_cookie_credentials
+    with patch("x_commenter.poster.TWITTER_AUTH_TOKEN", "test_auth_token_123"), \
+         patch("x_commenter.poster.TWITTER_CT0", "test_ct0_456"):
+        creds = get_cookie_credentials()
+        assert creds == ("test_auth_token_123", "test_ct0_456")
+
+
+# ==========================================
+# 13. Poster Success with GraphQL Mock
+# ==========================================
+def test_poster_graphql_success_mock():
+    """Test 13: Verify post_reply successfully parses GraphQL CreateTweet response."""
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "data": {
+            "create_tweet": {
+                "tweet_results": {
+                    "result": {
+                        "rest_id": "1928374650192837465"
+                    }
+                }
+            }
+        }
+    }
 
     with patch("x_commenter.poster.DRY_RUN", False), \
-         patch("x_commenter.poster.get_twikit_client", return_value=mock_client):
-        success = await async_post_reply(
+         patch("x_commenter.poster.get_cookie_credentials", return_value=("dummy_auth", "dummy_ct0")), \
+         patch("curl_cffi.requests.post", return_value=mock_resp) as mock_post:
+        success = post_reply(
             reply_text="OnePlus 13 vs iQOO 13 at ₹54,999: 6000mAh battery makes the difference.",
             in_reply_to_tweet_id="188273645192837465",
         )
         assert success is True
-        mock_client.create_tweet.assert_called_once_with(
-            text="OnePlus 13 vs iQOO 13 at ₹54,999: 6000mAh battery makes the difference.",
-            reply_to="188273645192837465",
-        )
+        assert mock_post.called
 
-
-# ==========================================
-# 13. Direct auth_token and ct0 Authentication
-# ==========================================
-@pytest.mark.asyncio
-async def test_poster_direct_auth_token_and_ct0_initialization():
-    """Test 13: Verify get_twikit_client sets cookies from TWITTER_AUTH_TOKEN and TWITTER_CT0."""
-    from x_commenter.poster import get_twikit_client
-    with patch("x_commenter.poster.TWITTER_AUTH_TOKEN", "dummy_auth_token_12345"), \
-         patch("x_commenter.poster.TWITTER_CT0", "dummy_ct0_67890"), \
-         patch("x_commenter.poster._client", None), \
-         patch("twikit.Client.set_cookies") as mock_set_cookies:
-        client = await get_twikit_client()
-        assert client is not None
-        mock_set_cookies.assert_called_once_with({
-            "auth_token": "dummy_auth_token_12345",
-            "ct0": "dummy_ct0_67890",
-        })
 
