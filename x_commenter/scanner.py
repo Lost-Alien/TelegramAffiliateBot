@@ -221,11 +221,55 @@ def scan_topic_tweets(limit: int) -> List[Dict[str, Any]]:
     return candidates
 
 
+def scan_trending_tech_news(limit: int) -> List[Dict[str, Any]]:
+    """QUATERNARY: Real-time Exa market intelligence search across authoritative tech news and reviews."""
+    exa = get_exa_client()
+    candidates: List[Dict[str, Any]] = []
+    seen_titles = set()
+
+    for topic in EXA_SEARCH_TOPICS:
+        if len(candidates) >= limit:
+            break
+
+        query = f"{topic} India price discount sale specs review"
+        try:
+            results = exa.search(
+                query=query,
+                type="auto",
+                num_results=2,
+                contents={"highlights": True},
+            )
+
+            for item in getattr(results, "results", []):
+                title = getattr(item, "title", "").strip()
+                if not title or title in seen_titles:
+                    continue
+
+                highlights = getattr(item, "highlights", [])
+                snippet = " ".join(highlights) if highlights else title
+                candidates.append({
+                    "id": None,
+                    "url": getattr(item, "url", ""),
+                    "title": title,
+                    "text": snippet[:500],
+                    "author": "",
+                    "topic": topic,
+                })
+                seen_titles.add(title)
+        except Exception as exc:
+            logger.debug(f"Exa news scan notice for '{topic}': {exc}")
+
+    logger.info(f"Discovered {len(candidates)} live market candidates from Exa intelligence scan.")
+    return candidates
+
+
 def scan_candidate_tweets(limit: int = 5) -> List[Dict[str, Any]]:
     """
-    Orchestrates tiered discovery: account-targeted Exa search first, then the
-    free fallback scraper, then generic topic search — each tier only runs if
-    the previous one didn't produce enough candidates.
+    Orchestrates tiered discovery:
+    1. Primary: Account-targeted Exa search
+    2. Secondary: Authenticated fallback scraper
+    3. Tertiary: Exa Twitter topic search
+    4. Quaternary: Real-time Exa live market intelligence (guaranteed results)
     """
     candidates = scan_account_tweets(limit)
 
@@ -234,10 +278,15 @@ def scan_candidate_tweets(limit: int = 5) -> List[Dict[str, Any]]:
 
     if len(candidates) < limit:
         remaining = limit - len(candidates)
-        seen_ids = {c["id"] for c in candidates}
+        seen_ids = {c["id"] for c in candidates if c.get("id")}
         for c in scan_topic_tweets(remaining):
             if c["id"] not in seen_ids:
                 candidates.append(c)
                 seen_ids.add(c["id"])
+
+    # If Twitter-specific URLs are empty, pull real-time Exa live market intelligence
+    if len(candidates) < limit:
+        remaining = limit - len(candidates)
+        candidates.extend(scan_trending_tech_news(remaining))
 
     return candidates[:limit]
