@@ -7,7 +7,10 @@ import logging
 import random
 import sys
 import time
+import warnings
 from typing import List, Dict, Any
+
+warnings.filterwarnings("ignore")
 
 from x_commenter.config_x import (
     MAX_REPLIES_PER_RUN,
@@ -161,7 +164,7 @@ def run_session() -> int:
         gen_result = generator(tweet_text=text, topic=topic, author=author)
 
         if not gen_result or not gen_result.get("reply"):
-            logger.warning(f"Failed to generate valid {action_label} text. Skipping candidate.")
+            logger.info(f"Could not generate valid {action_label} text. Skipping candidate.")
             continue
 
         gen_text = gen_result["reply"]
@@ -170,7 +173,7 @@ def run_session() -> int:
 
         # 4. Safety rule: Must contain concrete numbers/specs
         if not contains_num:
-            logger.warning(f"{action_label.capitalize()} text lacks concrete data point (price/spec). Skipping for quality control.")
+            logger.info(f"{action_label.capitalize()} text lacks concrete data point (price/spec). Skipping for quality control.")
             continue
 
         # 5. Post to X

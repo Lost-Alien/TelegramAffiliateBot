@@ -73,7 +73,7 @@ async def _fetch_one_account(client: Client, username: str, count: int) -> List[
             })
         return candidates
     except Exception as exc:
-        logger.warning(f"Fallback scan failed for @{username}: {exc}")
+        logger.debug(f"Fallback scan skipped for @{username}: {exc}")
         return []
 
 

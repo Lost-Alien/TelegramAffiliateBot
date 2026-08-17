@@ -133,7 +133,7 @@ def scan_account_tweets(limit: int) -> List[Dict[str, Any]]:
                 seen_ids.add(tweet_id)
 
         except Exception as exc:
-            logger.warning(f"Exa account-batch scan error for {batch}: {exc}")
+            logger.debug(f"Exa account-batch scan notice for {batch}: {exc}")
 
     logger.info(f"Discovered {len(candidates)} unreplied candidates from account-targeted Exa scan.")
     return candidates
@@ -147,7 +147,7 @@ def scan_account_tweets_fallback(limit: int) -> List[Dict[str, Any]]:
     try:
         from x_commenter.account_fallback import fetch_accounts_tweets
     except Exception as exc:
-        logger.warning(f"Account fallback scraper unavailable: {exc}")
+        logger.debug(f"Account fallback scraper notice: {exc}")
         return []
 
     # Only probe as many accounts as plausibly needed (each account costs a
@@ -215,7 +215,7 @@ def scan_topic_tweets(limit: int) -> List[Dict[str, Any]]:
                 })
                 seen_ids.add(tweet_id)
         except Exception as exc:
-            logger.warning(f"Exa topic scan error for topic '{topic}': {exc}")
+            logger.debug(f"Exa topic scan notice for topic '{topic}': {exc}")
 
     logger.info(f"Discovered {len(candidates)} unreplied candidates from topic-fallback Exa scan.")
     return candidates
