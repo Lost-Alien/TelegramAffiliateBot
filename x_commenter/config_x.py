@@ -45,10 +45,10 @@ UPSTASH_REDIS_REST_URL = _clean_env("UPSTASH_REDIS_REST_URL", "")
 UPSTASH_REDIS_REST_TOKEN = _clean_env("UPSTASH_REDIS_REST_TOKEN", "")
 
 # ==========================================
-# Safety & Rate Limits (Safe Pacing: 50 replies/day total, XActions Architecture)
+# Safety & Rate Limits (Safe Pacing: 20 replies/day total, XActions Architecture)
 # ==========================================
-MAX_REPLIES_PER_RUN = int(os.getenv("MAX_REPLIES_PER_RUN", "4"))
-MAX_REPLIES_PER_DAY = int(os.getenv("MAX_REPLIES_PER_DAY", "50"))
+MAX_REPLIES_PER_RUN = int(os.getenv("MAX_REPLIES_PER_RUN", "2"))
+MAX_REPLIES_PER_DAY = int(os.getenv("MAX_REPLIES_PER_DAY", "20"))
 MIN_DELAY_BETWEEN_REPLIES_SEC = int(os.getenv("MIN_DELAY_BETWEEN_REPLIES_SEC", "30"))
 MAX_CHAR_LIMIT = 260
 DRY_RUN = os.getenv("DRY_RUN", "false").lower() in ("true", "1", "yes")
@@ -81,8 +81,8 @@ ENABLE_ACCOUNT_FALLBACK_SCRAPER = os.getenv("ENABLE_ACCOUNT_FALLBACK_SCRAPER", "
 # a brand-new tweet on your own timeline rather than a nested reply, so it
 # gets its own daily/run budget instead of eating into MAX_REPLIES_PER_DAY.
 ENABLE_QUOTE_REPOSTS = os.getenv("ENABLE_QUOTE_REPOSTS", "true").lower() in ("true", "1", "yes")
-MAX_QUOTE_REPOSTS_PER_RUN = int(os.getenv("MAX_QUOTE_REPOSTS_PER_RUN", "2"))
-MAX_QUOTE_REPOSTS_PER_DAY = int(os.getenv("MAX_QUOTE_REPOSTS_PER_DAY", "20"))
+MAX_QUOTE_REPOSTS_PER_RUN = int(os.getenv("MAX_QUOTE_REPOSTS_PER_RUN", "1"))
+MAX_QUOTE_REPOSTS_PER_DAY = int(os.getenv("MAX_QUOTE_REPOSTS_PER_DAY", "8"))
 
 # Probability (0.0-1.0) that an eligible candidate becomes a quote-repost
 # instead of a plain reply, when both budgets still have room. Keeps the mix
