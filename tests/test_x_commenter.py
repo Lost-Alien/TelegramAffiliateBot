@@ -1,12 +1,12 @@
 """
-test_x_commenter.py — 10 Comprehensive Tests for TechSelect X Auto-Commenter
-Covers configuration, state deduplication, scanner, safety guardrails, reply generator, and poster.
+test_x_commenter.py — Comprehensive Test Suite for TechSelect X Auto-Commenter
+Covers Twikit cookie auth, rate limits (10 replies/hr), state deduplication, Exa scanning, guardrails, and poster mocking.
 """
 
 import pytest
 import time
 import re
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 
 import x_commenter.config_x as config_x
 from x_commenter.scanner import extract_tweet_id, scan_candidate_tweets
@@ -20,16 +20,17 @@ from x_commenter.reply_gen import (
     generate_techselect_reply,
     TECHSELECT_SYSTEM_PROMPT,
 )
-from x_commenter.poster import post_reply
+from x_commenter.poster import post_reply, async_post_reply
 
 
 # ==========================================
-# 1. Config Validation
+# 1. Config Validation (Hourly 10 Replies Pacing)
 # ==========================================
 def test_config_keys_and_limits():
-    """Test 1: Verify rate limits, search topics, and persona prompt rules."""
-    assert config_x.MAX_REPLIES_PER_RUN >= 1
-    assert config_x.MAX_REPLIES_PER_DAY >= config_x.MAX_REPLIES_PER_RUN
+    """Test 1: Verify hourly rate limits (10 replies/run), daily limit, search topics, and prompt rules."""
+    assert config_x.MAX_REPLIES_PER_RUN == 10
+    assert config_x.MAX_REPLIES_PER_DAY == 240
+    assert config_x.MIN_DELAY_BETWEEN_REPLIES_SEC == 25
     assert config_x.MAX_CHAR_LIMIT == 260
     assert len(config_x.EXA_SEARCH_TOPICS) > 0
     assert len(config_x.TARGET_TECH_ACCOUNTS) > 0
@@ -203,3 +204,39 @@ def test_scanner_filtering_already_replied():
 
         assert already_seen_id not in candidate_ids
         assert "112233445566778899" in candidate_ids
+
+
+# ==========================================
+# 11. Poster Missing Cookies Fallback
+# ==========================================
+def test_poster_missing_cookies_handled_gracefully():
+    """Test 11: Verify poster fails gracefully when no cookies are available and DRY_RUN is False."""
+    with patch("x_commenter.poster.DRY_RUN", False), \
+         patch("x_commenter.poster.ensure_cookies_file", return_value=None), \
+         patch("x_commenter.poster._client", None):
+        success = post_reply("Testing missing cookies", in_reply_to_tweet_id="123456789")
+        assert success is False
+
+
+# ==========================================
+# 12. Twikit Client Posting Mock
+# ==========================================
+@pytest.mark.asyncio
+async def test_twikit_async_post_reply_mock():
+    """Test 12: Verify async_post_reply calls twikit create_tweet with text and reply_to."""
+    mock_client = AsyncMock()
+    mock_tweet = MagicMock()
+    mock_tweet.id = "1928374650192837465"
+    mock_client.create_tweet.return_value = mock_tweet
+
+    with patch("x_commenter.poster.DRY_RUN", False), \
+         patch("x_commenter.poster.get_twikit_client", return_value=mock_client):
+        success = await async_post_reply(
+            reply_text="OnePlus 13 vs iQOO 13 at ₹54,999: 6000mAh battery makes the difference.",
+            in_reply_to_tweet_id="188273645192837465",
+        )
+        assert success is True
+        mock_client.create_tweet.assert_called_once_with(
+            text="OnePlus 13 vs iQOO 13 at ₹54,999: 6000mAh battery makes the difference.",
+            reply_to="188273645192837465",
+        )

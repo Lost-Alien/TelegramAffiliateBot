@@ -1,49 +1,82 @@
 """
-poster.py — Posts replies to X/Twitter via official Twitter API v2 (Tweepy).
-Supports dry-run testing and safety logging.
+poster.py — Posts replies to X/Twitter via Twikit (Cookie Auth / Free Session).
+Supports cookie restoration from base64 env vars, dry-run simulation, and async/sync interfaces.
 """
 
+import asyncio
+import base64
 import logging
+from pathlib import Path
 from typing import Optional, Dict, Any
-import tweepy
+
+from twikit import Client
+from twikit.errors import TwitterException
+
 from x_commenter.config_x import (
-    TWITTER_API_KEY,
-    TWITTER_API_SECRET,
-    TWITTER_ACCESS_TOKEN,
-    TWITTER_ACCESS_TOKEN_SECRET,
-    TWITTER_BEARER_TOKEN,
+    TWITTER_COOKIES_B64,
+    COOKIES_PATH,
     DRY_RUN,
 )
 
 logger = logging.getLogger("x_commenter.poster")
 
-_client: Optional[tweepy.Client] = None
+_client: Optional[Client] = None
 
 
-def get_twitter_client() -> Optional[tweepy.Client]:
-    global _client
-    if _client is None:
-        if not (TWITTER_API_KEY and TWITTER_ACCESS_TOKEN):
-            logger.error("Missing Twitter API credentials in environment.")
-            return None
-        try:
-            _client = tweepy.Client(
-                bearer_token=TWITTER_BEARER_TOKEN or None,
-                consumer_key=TWITTER_API_KEY,
-                consumer_secret=TWITTER_API_SECRET,
-                access_token=TWITTER_ACCESS_TOKEN,
-                access_token_secret=TWITTER_ACCESS_TOKEN_SECRET,
-            )
-        except Exception as exc:
-            logger.error(f"Failed to initialize Tweepy Client: {exc}")
-            return None
-    return _client
-
-
-def post_reply(reply_text: str, in_reply_to_tweet_id: Optional[str] = None) -> bool:
+def ensure_cookies_file() -> Optional[Path]:
     """
-    Post a reply or tweet.
-    Returns True if posted (or simulated in dry-run), False otherwise.
+    Ensures a valid cookies.json file exists on disk.
+    If COOKIES_PATH exists, returns it.
+    Otherwise, if TWITTER_COOKIES_B64 is provided, decodes and writes it.
+    """
+    if COOKIES_PATH.is_file() and COOKIES_PATH.stat().st_size > 0:
+        return COOKIES_PATH
+
+    if TWITTER_COOKIES_B64:
+        try:
+            decoded_bytes = base64.b64decode(TWITTER_COOKIES_B64)
+            COOKIES_PATH.parent.mkdir(parents=True, exist_ok=True)
+            with open(COOKIES_PATH, "wb") as f:
+                f.write(decoded_bytes)
+            logger.info(f"Successfully decoded TWITTER_COOKIES_B64 to {COOKIES_PATH}")
+            return COOKIES_PATH
+        except Exception as exc:
+            logger.error(f"Failed to decode TWITTER_COOKIES_B64: {exc}")
+            return None
+
+    return None
+
+
+async def get_twikit_client() -> Optional[Client]:
+    """
+    Initializes and authenticates a Twikit Client using session cookies.
+    """
+    global _client
+    if _client is not None:
+        return _client
+
+    cookie_file = ensure_cookies_file()
+    if not cookie_file:
+        logger.error(
+            "Missing X session cookies! Please run 'python -m x_commenter.login_helper' "
+            "or set TWITTER_COOKIES_B64 in your environment/secrets."
+        )
+        return None
+
+    try:
+        client = Client(language="en-US")
+        client.load_cookies(str(cookie_file))
+        _client = client
+        logger.info("Twikit Client authenticated successfully with session cookies.")
+        return _client
+    except Exception as exc:
+        logger.error(f"Failed to authenticate Twikit Client: {exc}")
+        return None
+
+
+async def async_post_reply(reply_text: str, in_reply_to_tweet_id: Optional[str] = None) -> bool:
+    """
+    Asynchronously post a reply or tweet using Twikit.
     """
     if not reply_text:
         logger.warning("Empty reply text provided. Skipping post.")
@@ -53,26 +86,49 @@ def post_reply(reply_text: str, in_reply_to_tweet_id: Optional[str] = None) -> b
         logger.info(f"[DRY_RUN] Would post to tweet_id={in_reply_to_tweet_id}:\n{reply_text}")
         return True
 
-    client = get_twitter_client()
+    client = await get_twikit_client()
     if not client:
-        logger.error("Twitter client not initialized. Cannot post.")
+        logger.error("Twikit client not initialized. Cannot post.")
         return False
 
     try:
         kwargs: Dict[str, Any] = {"text": reply_text}
         if in_reply_to_tweet_id:
-            kwargs["in_reply_to_tweet_id"] = in_reply_to_tweet_id
+            kwargs["reply_to"] = str(in_reply_to_tweet_id)
 
-        resp = client.create_tweet(**kwargs)
-        if resp and resp.data:
-            posted_id = resp.data.get("id")
-            logger.info(f"Successfully posted reply! New Tweet ID: {posted_id}")
+        tweet = await client.create_tweet(**kwargs)
+        if tweet:
+            tweet_id = getattr(tweet, "id", None) or getattr(tweet, "tweet_id", "unknown")
+            logger.info(f"Successfully posted reply via Twikit! New Tweet ID: {tweet_id}")
             return True
-        logger.warning(f"Unexpected response from Twitter API: {resp}")
+
+        logger.warning("Twikit returned empty response from create_tweet.")
         return False
-    except tweepy.errors.TweepyException as exc:
-        logger.error(f"Twitter API error during posting: {exc}")
+    except TwitterException as exc:
+        logger.error(f"Twitter/Twikit API error during posting: {exc}")
         return False
     except Exception as exc:
-        logger.error(f"Unexpected error during posting: {exc}")
+        logger.error(f"Unexpected error during Twikit posting: {exc}")
         return False
+
+
+def post_reply(reply_text: str, in_reply_to_tweet_id: Optional[str] = None) -> bool:
+    """
+    Synchronous wrapper for posting replies to X.
+    Compatible with existing orchestrator and pipeline scripts.
+    """
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # If already inside an async loop, schedule in a new task or runner
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                return pool.submit(
+                    asyncio.run, async_post_reply(reply_text, in_reply_to_tweet_id)
+                ).result()
+        else:
+            return loop.run_until_complete(
+                async_post_reply(reply_text, in_reply_to_tweet_id)
+            )
+    except RuntimeError:
+        return asyncio.run(async_post_reply(reply_text, in_reply_to_tweet_id))

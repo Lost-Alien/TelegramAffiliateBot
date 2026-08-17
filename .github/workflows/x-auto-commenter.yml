@@ -2,13 +2,8 @@ name: X Auto Commenter (TechSelect)
 
 on:
   schedule:
-    # 3x daily at peak Indian tech engagement windows (IST = UTC + 5:30)
-    # 03:30 UTC = 09:00 AM IST (Morning commute)
-    - cron: '30 3 * * *'
-    # 08:30 UTC = 02:00 PM IST (Lunch peak)
-    - cron: '30 8 * * *'
-    # 13:30 UTC = 07:00 PM IST (Evening deals window)
-    - cron: '30 13 * * *'
+    # Run every hour at minute 0 (24x daily, 10 replies per hour)
+    - cron: '0 * * * *'
 
   workflow_dispatch:
     inputs:
@@ -29,7 +24,7 @@ jobs:
   auto-comment:
     name: Run X Auto-Commenter
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - name: Checkout Codebase
@@ -46,18 +41,28 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Decode X Session Cookies
+        if: ${{ env.TWITTER_COOKIES_B64 != '' }}
+        env:
+          TWITTER_COOKIES_B64: ${{ secrets.TWITTER_COOKIES_B64 }}
+        run: |
+          echo "$TWITTER_COOKIES_B64" | base64 -d > x_commenter/cookies.json
+          chmod 600 x_commenter/cookies.json || true
+
       - name: Execute X Commenter Session
         env:
           EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
-          TWITTER_API_KEY: ${{ secrets.TWITTER_API_KEY }}
-          TWITTER_API_SECRET: ${{ secrets.TWITTER_API_SECRET }}
-          TWITTER_ACCESS_TOKEN: ${{ secrets.TWITTER_ACCESS_TOKEN }}
-          TWITTER_ACCESS_TOKEN_SECRET: ${{ secrets.TWITTER_ACCESS_TOKEN_SECRET }}
-          TWITTER_BEARER_TOKEN: ${{ secrets.TWITTER_BEARER_TOKEN }}
+          TWITTER_COOKIES_B64: ${{ secrets.TWITTER_COOKIES_B64 }}
           UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
           UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
-          MAX_REPLIES_PER_RUN: '2'
-          MAX_REPLIES_PER_DAY: '6'
+          MAX_REPLIES_PER_RUN: '10'
+          MAX_REPLIES_PER_DAY: '240'
+          MIN_DELAY_BETWEEN_REPLIES_SEC: '25'
         run: |
           python -m x_commenter.run
+
+      - name: Clean up Ephemeral Cookie File
+        if: always()
+        run: |
+          rm -f x_commenter/cookies.json cookies.json

@@ -13,6 +13,8 @@ __pycache__/
 *.key
 *.csv
 *_credentials*
+cookies.json
+x_commenter/cookies.json
 
 # Telegram session files - contain auth tokens
 *.session

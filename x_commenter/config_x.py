@@ -1,5 +1,6 @@
 """
 config_x.py — Configuration and credentials for the X Auto-Commenter module.
+Powered by Exa AI for discovery and Twikit (Cookie Auth) for free posting.
 """
 
 import os
@@ -16,15 +17,13 @@ load_dotenv(dotenv_path=env_path)
 EXA_API_KEY = os.getenv("EXA_API_KEY", "ddffd3ea-5e2d-44b4-90b4-257d62150788").strip()
 
 # ==========================================
-# Twitter / X API Credentials (@techselect_blog)
+# Twitter / X Cookie Auth Credentials (@techselect_blog)
 # ==========================================
-TWITTER_API_KEY = os.getenv("TWITTER_API_KEY", "").strip()
-TWITTER_API_SECRET = os.getenv("TWITTER_API_SECRET", "").strip()
-TWITTER_ACCESS_TOKEN = os.getenv("TWITTER_ACCESS_TOKEN", "").strip()
-TWITTER_ACCESS_TOKEN_SECRET = os.getenv("TWITTER_ACCESS_TOKEN_SECRET", "").strip()
-TWITTER_BEARER_TOKEN = os.getenv("TWITTER_BEARER_TOKEN", "").strip()
-TWITTER_CLIENT_ID = os.getenv("TWITTER_CLIENT_ID", "").strip()
-TWITTER_CLIENT_SECRET = os.getenv("TWITTER_CLIENT_SECRET", "").strip()
+# Base64 encoded cookies.json from GitHub Secrets
+TWITTER_COOKIES_B64 = os.getenv("TWITTER_COOKIES_B64", "").strip()
+
+# Local/runtime cookie file path
+COOKIES_PATH = Path(__file__).resolve().parent / "cookies.json"
 
 # ==========================================
 # Upstash Redis Configuration
@@ -33,11 +32,11 @@ UPSTASH_REDIS_REST_URL = os.getenv("UPSTASH_REDIS_REST_URL", "").strip()
 UPSTASH_REDIS_REST_TOKEN = os.getenv("UPSTASH_REDIS_REST_TOKEN", "").strip()
 
 # ==========================================
-# Safety & Rate Limits (Strict anti-ban policies)
+# Safety & Rate Limits (Hourly Pacing: 10 replies/run)
 # ==========================================
-MAX_REPLIES_PER_RUN = int(os.getenv("MAX_REPLIES_PER_RUN", "2"))
-MAX_REPLIES_PER_DAY = int(os.getenv("MAX_REPLIES_PER_DAY", "6"))
-MIN_DELAY_BETWEEN_REPLIES_SEC = int(os.getenv("MIN_DELAY_BETWEEN_REPLIES_SEC", "180"))
+MAX_REPLIES_PER_RUN = int(os.getenv("MAX_REPLIES_PER_RUN", "10"))
+MAX_REPLIES_PER_DAY = int(os.getenv("MAX_REPLIES_PER_DAY", "240"))
+MIN_DELAY_BETWEEN_REPLIES_SEC = int(os.getenv("MIN_DELAY_BETWEEN_REPLIES_SEC", "25"))
 MAX_CHAR_LIMIT = 260
 DRY_RUN = os.getenv("DRY_RUN", "false").lower() in ("true", "1", "yes")
 
@@ -66,3 +65,4 @@ TARGET_TECH_ACCOUNTS = [
     "IndiaPOCO",
     "MotorolaIndia",
 ]
+
