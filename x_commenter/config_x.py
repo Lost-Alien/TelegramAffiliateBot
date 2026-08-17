@@ -45,6 +45,11 @@ MIN_DELAY_BETWEEN_REPLIES_SEC = int(os.getenv("MIN_DELAY_BETWEEN_REPLIES_SEC", "
 MAX_CHAR_LIMIT = 260
 DRY_RUN = os.getenv("DRY_RUN", "false").lower() in ("true", "1", "yes")
 
+# When True, the bot always posts at least 1 standalone market commentary tweet
+# per run — even if the daily reply cap is fully exhausted. This prevents the
+# GitHub Actions run from completing with 0 posts on days when limits are hit.
+ALWAYS_POST_STANDALONE = os.getenv("ALWAYS_POST_STANDALONE", "true").lower() in ("true", "1", "yes")
+
 # ==========================================
 # Multi-Account Engagement Controls
 # ==========================================

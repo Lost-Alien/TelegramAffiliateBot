@@ -18,6 +18,7 @@ from x_commenter.config_x import (
     MAX_QUOTE_REPOSTS_PER_RUN,
     MAX_QUOTE_REPOSTS_PER_DAY,
     QUOTE_REPOST_CHANCE,
+    ALWAYS_POST_STANDALONE,
     DRY_RUN,
 )
 from x_commenter.state import (
@@ -72,26 +73,44 @@ def run_session() -> int:
         remaining_quote_daily = max(0, MAX_QUOTE_REPOSTS_PER_DAY - current_quote_daily)
         target_quotes = min(MAX_QUOTE_REPOSTS_PER_RUN, remaining_quote_daily)
 
-    if target_replies <= 0 and target_quotes <= 0:
+    # ALWAYS_POST_STANDALONE: ensure at least 1 standalone original tweet posts
+    # even when the daily reply cap is exhausted — keeps the account active
+    # without impacting the reply budget used for engaging other accounts.
+    force_standalone = ALWAYS_POST_STANDALONE and (target_replies <= 0 and target_quotes <= 0)
+    if force_standalone:
+        logger.info("Daily reply cap reached, but ALWAYS_POST_STANDALONE is enabled — will post 1 standalone market commentary.")
+        target_replies = 1  # Allow exactly 1 standalone post
+    elif target_replies <= 0 and target_quotes <= 0:
         logger.info("Daily reply and quote-repost limits reached. Exiting gracefully to protect account.")
         return 0
 
     logger.info(f"Targeting up to {target_replies} reply/replies and {target_quotes} quote-repost(s) this run.")
 
-    # 2. Scan for candidate discussions
+    # 2. Scan for candidate discussions — always generate standalone commentary as
+    # guaranteed fallback so the bot ALWAYS has something to post.
     scan_limit = max((target_replies + target_quotes) * 3, 3)
     candidates: List[Dict[str, Any]] = scan_candidate_tweets(limit=scan_limit)
 
-    # If no specific tweet URLs were found in general search, synthesize an authoritative market commentary tweet
-    if not candidates:
-        logger.info("No unreplied tweet URLs found in scan. Generating a standalone market commentary update.")
+    # Standalone market commentary — used when scanner finds no tweet URLs to reply to
+    # OR when we're in forced-standalone mode (daily cap hit but ALWAYS_POST_STANDALONE on).
+    standalone_topics = [
+        ("Indian Tech Value Comparison", "Latest smartphone deals India: RTX laptop pricing, iPhone effective price after exchange, OnePlus vs Samsung comparison."),
+        ("Budget Smartphone India 2024", "Best phones under 30000 in India, camera rankings, battery life, 5G coverage, and real street pricing."),
+        ("Gaming Laptop India Benchmark", "Gaming laptops under 1 lakh India: sustained TGP, thermals, HDFC/ICICI card discounts, value picks."),
+        ("MacBook vs Windows Laptop India", "MacBook Air M3 vs Windows ultrabooks in India — student pricing, battery life, app compatibility tradeoffs."),
+        ("Flagship Phone India Street Price", "Galaxy S24 vs iQOO 13 vs OnePlus 12 — effective prices after bank card cashback, exchange, EMI in India."),
+    ]
+    if not candidates or force_standalone:
+        import random as _random
+        topic_title, topic_text = _random.choice(standalone_topics)
+        logger.info(f"No tweet candidates found or standalone mode active. Using topic: '{topic_title}'")
         candidates = [{
             "id": None,
             "url": None,
-            "title": "Indian Tech Market Price-to-Performance Highlight",
-            "text": "Latest smartphone and laptop deals in India with street pricing and discounts.",
+            "title": topic_title,
+            "text": topic_text,
             "author": "",
-            "topic": "Indian Tech Value Comparison",
+            "topic": topic_title,
         }]
 
     posted_count = 0

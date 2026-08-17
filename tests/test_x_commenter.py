@@ -32,9 +32,11 @@ def test_config_keys_and_limits():
     assert config_x.MAX_REPLIES_PER_DAY == 10
     assert config_x.MIN_DELAY_BETWEEN_REPLIES_SEC == 45
     assert config_x.MAX_CHAR_LIMIT == 260
+    assert config_x.ALWAYS_POST_STANDALONE is True
     assert len(config_x.EXA_SEARCH_TOPICS) > 0
     assert len(config_x.TARGET_TECH_ACCOUNTS) > 0
     assert config_x.EXA_API_KEY.startswith("ddffd3ea")
+
 
 
 
