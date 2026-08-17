@@ -27,14 +27,15 @@ from x_commenter.poster import post_reply, async_post_reply
 # 1. Config Validation (Hourly 10 Replies Pacing)
 # ==========================================
 def test_config_keys_and_limits():
-    """Test 1: Verify hourly rate limits (10 replies/run), daily limit, search topics, and prompt rules."""
-    assert config_x.MAX_REPLIES_PER_RUN == 10
-    assert config_x.MAX_REPLIES_PER_DAY == 240
-    assert config_x.MIN_DELAY_BETWEEN_REPLIES_SEC == 25
+    """Test 1: Verify safe daily limits (10 replies/day), run limits, search topics, and prompt rules."""
+    assert config_x.MAX_REPLIES_PER_RUN == 2
+    assert config_x.MAX_REPLIES_PER_DAY == 10
+    assert config_x.MIN_DELAY_BETWEEN_REPLIES_SEC == 45
     assert config_x.MAX_CHAR_LIMIT == 260
     assert len(config_x.EXA_SEARCH_TOPICS) > 0
     assert len(config_x.TARGET_TECH_ACCOUNTS) > 0
     assert config_x.EXA_API_KEY.startswith("ddffd3ea")
+
 
 
 # ==========================================

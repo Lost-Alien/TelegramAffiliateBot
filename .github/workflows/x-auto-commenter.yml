@@ -50,9 +50,9 @@ jobs:
           UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
           UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
-          MAX_REPLIES_PER_RUN: '10'
-          MAX_REPLIES_PER_DAY: '240'
-          MIN_DELAY_BETWEEN_REPLIES_SEC: '25'
+          MAX_REPLIES_PER_RUN: '2'
+          MAX_REPLIES_PER_DAY: '10'
+          MIN_DELAY_BETWEEN_REPLIES_SEC: '45'
         run: |
           python -m x_commenter.run
 

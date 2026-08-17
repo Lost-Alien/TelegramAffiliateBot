@@ -37,11 +37,11 @@ UPSTASH_REDIS_REST_URL = os.getenv("UPSTASH_REDIS_REST_URL", "").strip()
 UPSTASH_REDIS_REST_TOKEN = os.getenv("UPSTASH_REDIS_REST_TOKEN", "").strip()
 
 # ==========================================
-# Safety & Rate Limits (Hourly Pacing: 10 replies/run)
+# Safety & Rate Limits (Safe Pacing: 10 replies/day total)
 # ==========================================
-MAX_REPLIES_PER_RUN = int(os.getenv("MAX_REPLIES_PER_RUN", "10"))
-MAX_REPLIES_PER_DAY = int(os.getenv("MAX_REPLIES_PER_DAY", "240"))
-MIN_DELAY_BETWEEN_REPLIES_SEC = int(os.getenv("MIN_DELAY_BETWEEN_REPLIES_SEC", "25"))
+MAX_REPLIES_PER_RUN = int(os.getenv("MAX_REPLIES_PER_RUN", "2"))
+MAX_REPLIES_PER_DAY = int(os.getenv("MAX_REPLIES_PER_DAY", "10"))
+MIN_DELAY_BETWEEN_REPLIES_SEC = int(os.getenv("MIN_DELAY_BETWEEN_REPLIES_SEC", "45"))
 MAX_CHAR_LIMIT = 260
 DRY_RUN = os.getenv("DRY_RUN", "false").lower() in ("true", "1", "yes")
 
