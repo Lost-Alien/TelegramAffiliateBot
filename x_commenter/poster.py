@@ -55,13 +55,20 @@ CREATE_TWEET_FEATURES = {
 }
 
 
+def _clean_token(val: Any) -> str:
+    """Strip whitespace, quotes, and UTF-8 BOM characters that break HTTP header encoding."""
+    if not val:
+        return ""
+    return str(val).strip().strip("\ufeff\u200b\r\n\t'\"")
+
+
 def get_cookie_credentials() -> Optional[Tuple[str, str]]:
     """
     Extracts (auth_token, ct0) from environment or cookie files.
     """
     # 1. Direct env vars
     if TWITTER_AUTH_TOKEN and TWITTER_CT0:
-        return TWITTER_AUTH_TOKEN, TWITTER_CT0
+        return _clean_token(TWITTER_AUTH_TOKEN), _clean_token(TWITTER_CT0)
 
     # 2. Base64 decoded cookie string
     if TWITTER_COOKIES_B64:
@@ -71,7 +78,7 @@ def get_cookie_credentials() -> Optional[Tuple[str, str]]:
             auth_token = data.get("auth_token") or data.get("auth_token_secret")
             ct0 = data.get("ct0") or data.get("csrf_token")
             if auth_token and ct0:
-                return auth_token, ct0
+                return _clean_token(auth_token), _clean_token(ct0)
         except Exception as exc:
             logger.error(f"Error parsing TWITTER_COOKIES_B64: {exc}")
 
@@ -83,7 +90,7 @@ def get_cookie_credentials() -> Optional[Tuple[str, str]]:
             auth_token = data.get("auth_token")
             ct0 = data.get("ct0")
             if auth_token and ct0:
-                return auth_token, ct0
+                return _clean_token(auth_token), _clean_token(ct0)
         except Exception as exc:
             logger.error(f"Error reading {COOKIES_PATH}: {exc}")
 
