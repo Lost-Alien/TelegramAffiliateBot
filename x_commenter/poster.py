@@ -201,7 +201,16 @@ def _create_tweet_sync(
                 first_err = errors[0]
                 err_msg = first_err.get("message", "Unknown GraphQL error")
                 err_code = first_err.get("code")
-                logger.error(f"X GraphQL error during {action_label} posting (code {err_code}): {err_msg}")
+                if err_code == 226:
+                    logger.warning(
+                        f"X automated activity cooldown active (code 226). Posting will resume automatically on the next scheduled run."
+                    )
+                elif err_code == 344:
+                    logger.warning(
+                        f"X 24-hour daily posting limit reached (code 344). Posting will resume after rolling window resets."
+                    )
+                else:
+                    logger.error(f"X GraphQL error during {action_label} posting (code {err_code}): {err_msg}")
                 return False
 
             tweet_res = (
