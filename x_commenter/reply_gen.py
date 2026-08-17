@@ -1,6 +1,7 @@
 """
-reply_gen.py — Synthesizes authoritative TechSelect India replies using Exa AI
-with structured output schema and Indian tech hardware review persona.
+reply_gen.py — Synthesizes authoritative TechSelect India replies and quote-repost
+commentary using Exa AI, with structured output schema and Indian tech hardware
+review persona.
 """
 
 import logging
@@ -23,43 +24,64 @@ def get_exa_client() -> Exa:
 
 TECHSELECT_SYSTEM_PROMPT = """
 You are @techselect_blog, the editorial team at TechSelect India — an independent consumer tech & hardware review site.
-Your goal is to write SHORT (2-3 sentences max), DIRECT, and DATA-BACKED replies on Twitter/X under Indian tech discussions.
+Write ONE short (2-3 sentences, under 260 chars), direct, data-backed reply for the given tweet.
 
 RULES:
-1. Always include at least ONE concrete Indian market number: ₹ price, mAh, nits, °C, wattage, or benchmark score.
-2. If discussing pricing, mention the effective street price after bank card discounts / exchange offers where applicable.
-3. Tone: Direct, honest, authoritative Indian English. Never sycophantic. No "Great post!", "Awesome!", "Thanks for sharing".
-4. End with EXACTLY ONE engaging question, forced choice, or unexpected hardware insight.
-5. NO hashtags, NO URLs/links, NO spam, max ONE emoji.
-6. Must strictly fit within 260 characters.
+1. Include at least one concrete number: ₹ price, mAh, nits, °C, wattage, or benchmark score.
+2. For pricing, cite the effective street price after bank/card discounts or exchange offers where relevant.
+3. Tone: direct, honest, authoritative Indian English. Never sycophantic — no "Great post!", "Awesome!", "Thanks for sharing".
+4. Vary your opening line and structure each time — never reuse the same sentence pattern across replies.
+5. End with exactly ONE engaging question, forced choice, or unexpected hardware insight.
+6. No hashtags, no URLs/links, no spam, max one emoji.
+"""
+
+TECHSELECT_QUOTE_SYSTEM_PROMPT = """
+You are @techselect_blog, the editorial team at TechSelect India — an independent consumer tech & hardware review site.
+Write ONE short (2-3 sentences, under 260 chars) standalone quote-repost commentary reacting to the tweet below.
+This becomes its OWN post on your timeline with the original tweet embedded beneath it — it must read as a fresh,
+standalone hot take or analysis, not as a nested reply acknowledging "this tweet".
+
+RULES:
+1. Include at least one concrete number: ₹ price, mAh, nits, °C, wattage, or benchmark score.
+2. For pricing, cite the effective street price after bank/card discounts or exchange offers where relevant.
+3. Tone: direct, honest, authoritative Indian English. Never sycophantic — no "Great post!", "Awesome!", "Thanks for sharing".
+4. Vary your opening line and structure each time — never reuse the same sentence pattern across posts.
+5. End with exactly ONE engaging question, forced choice, or unexpected hardware insight.
+6. No hashtags, no URLs/links, no spam, max one emoji.
 """
 
 
-def generate_techselect_reply(tweet_text: str, topic: str = "", author: str = "") -> Optional[Dict[str, Any]]:
+def _synthesize_techselect_text(
+    system_prompt: str,
+    query_label: str,
+    tweet_text: str,
+    topic: str = "",
+    author: str = "",
+) -> Optional[Dict[str, Any]]:
     """
-    Generate an authoritative reply using Exa AI structured synthesis.
-    Returns a dict with 'reply' and 'contains_number'.
+    Shared Exa synthesis + safety guardrails used by both reply and
+    quote-repost generation. Returns a dict with 'reply' and 'contains_number'.
     """
     exa = get_exa_client()
-    query = f"TechSelect India hardware review expert reply to tweet on {topic or 'tech hardware'}: \"{tweet_text[:250]}\""
+    query = f"TechSelect India hardware review expert {query_label} on {topic or 'tech hardware'}: \"{tweet_text[:250]}\""
 
     try:
-        logger.info(f"Synthesizing reply via Exa for: {tweet_text[:60]}...")
+        logger.info(f"Synthesizing {query_label} via Exa for: {tweet_text[:60]}...")
         res = exa.search(
             query=query,
             type="deep",
-            system_prompt=TECHSELECT_SYSTEM_PROMPT,
+            system_prompt=system_prompt,
             output_schema={
                 "type": "object",
                 "required": ["reply", "contains_number"],
                 "properties": {
                     "reply": {
                         "type": "string",
-                        "description": "Short Twitter reply under 250 chars with Indian pricing or hardware spec"
+                        "description": "Short Twitter text under 250 chars with Indian pricing or hardware spec"
                     },
                     "contains_number": {
                         "type": "boolean",
-                        "description": "True if the reply contains an Indian Rupee price or technical spec number"
+                        "description": "True if the text contains an Indian Rupee price or technical spec number"
                     }
                 }
             },
@@ -78,7 +100,7 @@ def generate_techselect_reply(tweet_text: str, topic: str = "", author: str = ""
 
             # 2. Check length
             if len(reply_text) > MAX_CHAR_LIMIT:
-                logger.warning(f"Generated reply exceeds character limit ({len(reply_text)} > {MAX_CHAR_LIMIT}). Trimming...")
+                logger.warning(f"Generated text exceeds character limit ({len(reply_text)} > {MAX_CHAR_LIMIT}). Trimming...")
                 # Trim cleanly to last sentence
                 sentences = re.split(r'(?<=[.!?])\s+', reply_text)
                 trimmed = ""
@@ -89,7 +111,7 @@ def generate_techselect_reply(tweet_text: str, topic: str = "", author: str = ""
 
             # 3. Check for URLs or banned spam phrases
             if "http://" in reply_text or "https://" in reply_text:
-                logger.warning("Reply contained raw link — rejecting for compliance safety.")
+                logger.warning("Text contained raw link — rejecting for compliance safety.")
                 return None
 
             # 4. Check for numbers (₹ or digits)
@@ -99,6 +121,28 @@ def generate_techselect_reply(tweet_text: str, topic: str = "", author: str = ""
 
             return content
     except Exception as exc:
-        logger.error(f"Exa reply synthesis failed: {exc}")
+        logger.error(f"Exa {query_label} synthesis failed: {exc}")
 
     return None
+
+
+def generate_techselect_reply(tweet_text: str, topic: str = "", author: str = "") -> Optional[Dict[str, Any]]:
+    """
+    Generate an authoritative reply using Exa AI structured synthesis.
+    Returns a dict with 'reply' and 'contains_number'.
+    """
+    return _synthesize_techselect_text(
+        TECHSELECT_SYSTEM_PROMPT, "reply to tweet", tweet_text, topic, author
+    )
+
+
+def generate_quote_commentary(tweet_text: str, topic: str = "", author: str = "") -> Optional[Dict[str, Any]]:
+    """
+    Generate standalone "repost with own thoughts" (quote-tweet) commentary
+    using Exa AI structured synthesis. Returns a dict with 'reply' and
+    'contains_number' (same shape as generate_techselect_reply for pipeline
+    compatibility).
+    """
+    return _synthesize_techselect_text(
+        TECHSELECT_QUOTE_SYSTEM_PROMPT, "quote-repost commentary", tweet_text, topic, author
+    )

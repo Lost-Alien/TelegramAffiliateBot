@@ -1,5 +1,5 @@
 """
-poster.py — Posts replies to X/Twitter via session cookie authentication.
+poster.py — Posts replies and quote-reposts to X/Twitter via session cookie authentication.
 Uses Chrome TLS fingerprinting (curl_cffi) to bypass bot protection reliably.
 Supports direct auth_token/ct0 cookies, Base64 secrets, and dry-run simulation.
 """
@@ -90,16 +90,24 @@ def get_cookie_credentials() -> Optional[Tuple[str, str]]:
     return None
 
 
-def post_reply_sync(reply_text: str, in_reply_to_tweet_id: Optional[str] = None) -> bool:
+def _create_tweet_sync(
+    tweet_text: str,
+    in_reply_to_tweet_id: Optional[str] = None,
+    attachment_url: Optional[str] = None,
+    action_label: str = "reply",
+) -> bool:
     """
-    Synchronously posts a tweet or reply to X using Chrome TLS impersonation.
+    Shared implementation for posting a tweet via X's CreateTweet GraphQL
+    endpoint — used for both plain replies (in_reply_to_tweet_id) and
+    quote-reposts (attachment_url set to the quoted tweet's URL).
     """
-    if not reply_text:
-        logger.warning("Empty reply text provided. Skipping post.")
+    if not tweet_text:
+        logger.warning(f"Empty {action_label} text provided. Skipping post.")
         return False
 
     if DRY_RUN:
-        logger.info(f"[DRY_RUN] Would post to tweet_id={in_reply_to_tweet_id}:\n{reply_text}")
+        target = in_reply_to_tweet_id or attachment_url
+        logger.info(f"[DRY_RUN] Would post {action_label} for target={target}:\n{tweet_text}")
         return True
 
     creds = get_cookie_credentials()
@@ -128,7 +136,7 @@ def post_reply_sync(reply_text: str, in_reply_to_tweet_id: Optional[str] = None)
     }
 
     variables: Dict[str, Any] = {
-        "tweet_text": reply_text,
+        "tweet_text": tweet_text,
         "dark_request": False,
         "media": {
             "media_entities": [],
@@ -142,6 +150,9 @@ def post_reply_sync(reply_text: str, in_reply_to_tweet_id: Optional[str] = None)
             "in_reply_to_tweet_id": str(in_reply_to_tweet_id),
             "exclude_reply_user_ids": [],
         }
+
+    if attachment_url:
+        variables["attachment_url"] = attachment_url
 
     payload = {
         "variables": variables,
@@ -166,7 +177,7 @@ def post_reply_sync(reply_text: str, in_reply_to_tweet_id: Optional[str] = None)
                 first_err = errors[0]
                 err_msg = first_err.get("message", "Unknown GraphQL error")
                 err_code = first_err.get("code")
-                logger.error(f"X GraphQL error during posting (code {err_code}): {err_msg}")
+                logger.error(f"X GraphQL error during {action_label} posting (code {err_code}): {err_msg}")
                 return False
 
             tweet_res = (
@@ -177,32 +188,56 @@ def post_reply_sync(reply_text: str, in_reply_to_tweet_id: Optional[str] = None)
             )
             posted_id = tweet_res.get("rest_id")
             if posted_id:
-                logger.info(f"Successfully posted reply via Cookie Auth! Tweet URL: https://x.com/techselect_blog/status/{posted_id}")
+                logger.info(f"Successfully posted {action_label} via Cookie Auth! Tweet URL: https://x.com/techselect_blog/status/{posted_id}")
                 return True
             else:
                 logger.warning(f"Unexpected response structure: {res_data}")
                 return False
         else:
             logger.error(
-                f"Failed to post reply (HTTP {response.status_code}): {response.text[:300]}"
+                f"Failed to post {action_label} (HTTP {response.status_code}): {response.text[:300]}"
             )
             return False
 
     except Exception as exc:
-        logger.error(f"Unexpected exception during X post: {exc}")
+        logger.error(f"Unexpected exception during X {action_label} post: {exc}")
         return False
 
 
+def post_reply_sync(reply_text: str, in_reply_to_tweet_id: Optional[str] = None) -> bool:
+    """Synchronously posts a reply to X using Chrome TLS impersonation."""
+    return _create_tweet_sync(reply_text, in_reply_to_tweet_id=in_reply_to_tweet_id, action_label="reply")
+
+
+def post_quote_tweet_sync(comment_text: str, quoted_tweet_url: str) -> bool:
+    """
+    Synchronously posts a quote-repost ("repost with own thoughts") — a new
+    standalone tweet with quoted_tweet_url attached, so the original tweet
+    renders embedded beneath your commentary.
+    """
+    if not quoted_tweet_url:
+        logger.warning("No quoted_tweet_url provided. Skipping quote-repost.")
+        return False
+    return _create_tweet_sync(comment_text, attachment_url=quoted_tweet_url, action_label="quote-repost")
+
+
 async def async_post_reply(reply_text: str, in_reply_to_tweet_id: Optional[str] = None) -> bool:
-    """
-    Asynchronous wrapper for posting replies.
-    """
+    """Asynchronous wrapper for posting replies."""
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, post_reply_sync, reply_text, in_reply_to_tweet_id)
 
 
+async def async_post_quote_tweet(comment_text: str, quoted_tweet_url: str) -> bool:
+    """Asynchronous wrapper for posting quote-reposts."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, post_quote_tweet_sync, comment_text, quoted_tweet_url)
+
+
 def post_reply(reply_text: str, in_reply_to_tweet_id: Optional[str] = None) -> bool:
-    """
-    Synchronous interface compatible with all pipeline modules.
-    """
+    """Synchronous interface compatible with all pipeline modules."""
     return post_reply_sync(reply_text, in_reply_to_tweet_id)
+
+
+def post_quote_tweet(comment_text: str, quoted_tweet_url: str) -> bool:
+    """Synchronous interface for posting a quote-repost ("repost with own thoughts")."""
+    return post_quote_tweet_sync(comment_text, quoted_tweet_url)
