@@ -36,7 +36,7 @@ def test_config_keys_and_limits():
     assert config_x.ALWAYS_POST_STANDALONE is True
     assert len(config_x.EXA_SEARCH_TOPICS) > 0
     assert len(config_x.TARGET_TECH_ACCOUNTS) > 0
-    assert config_x.EXA_API_KEY.startswith("ddffd3ea")
+    assert isinstance(config_x.EXA_API_KEY, str) and len(config_x.EXA_API_KEY) > 0
 
 
 

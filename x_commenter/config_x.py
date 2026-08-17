@@ -22,7 +22,7 @@ def _clean_env(key: str, default: str = "") -> str:
 # ==========================================
 # Exa AI API Configuration
 # ==========================================
-EXA_API_KEY = _clean_env("EXA_API_KEY", "ddffd3ea-5e2d-44b4-90b4-257d62150788")
+EXA_API_KEY = _clean_env("EXA_API_KEY", "")
 
 # ==========================================
 # Twitter / X Cookie Auth Credentials (@techselect_blog)
