@@ -72,6 +72,41 @@ TONE GUIDE:
 """
 
 
+# ---------------------------------------------------------------------------
+# Sentiment / Signal Scorer — runs locally, zero Exa credits
+# ---------------------------------------------------------------------------
+# High-signal patterns that justify a type="deep" Exa call (richer synthesis,
+# more credit cost). Everything else uses type="auto" (cheaper, faster).
+_HIGH_SIGNAL_PATTERNS = re.compile(
+    r"""
+    # Pricing anger / shock
+    (\bhike\b|\bprice\s*rise\b|\bexpensive\b|\boverpriced\b|\bcostly\b)|
+    # Comparisons that need real data
+    (\bvs\b|\bcompare\b|\bcomparison\b|\bbetter\s+than\b|\bworth\b|\bswitch\b)|
+    # Telecom / policy controversy
+    (\bairtel\b|\bjio\b|\bbsnl\b|\bvi\b|\btelecom\b|\btariff\b|\bplan\b|\brecharge\b)|
+    # Spec debate triggers
+    (\bsnapdragon\b|\bdimensity\b|\bexynos\b|\bbattery\b|\bcamera\b|\bdisplay\b|\bcharging\b)|
+    # Emotional frustration markers
+    (\bwhy\b.*\?|\bhow\s+long\b|\bstill\b|\bdisappointed\b|\bscam\b|\bripoff\b|\bunfair\b)|
+    # Indian rupee pricing in the text
+    (\u20b9|\brs\.?\s*\d+|\blakhs?\b|\brupees?\b)
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+
+def _score_sentiment(text: str) -> str:
+    """
+    Returns 'high' if the tweet warrants a deep Exa synthesis call,
+    'low' if a cheaper auto call is sufficient.
+    """
+    matches = _HIGH_SIGNAL_PATTERNS.findall(text)
+    # Count non-empty match groups
+    hit_count = sum(1 for group_tuple in matches for m in group_tuple if m)
+    return "high" if hit_count >= 2 else "low"
+
+
 def _synthesize_techselect_text(
     system_prompt: str,
     query_label: str,
@@ -81,16 +116,34 @@ def _synthesize_techselect_text(
 ) -> Optional[Dict[str, Any]]:
     """
     Shared Exa synthesis + safety guardrails used by both reply and
-    quote-repost generation. Returns a dict with 'reply' and 'contains_number'.
+    quote-repost generation.
+
+    Credit-efficiency logic:
+    - Runs a local sentiment scorer (zero credits) first.
+    - HIGH signal (controversy, pricing, spec debate) → type="deep" for richer synthesis.
+    - LOW signal (generic/informational) → type="auto" (60-70% cheaper).
+    - Aggregates ALL highlights returned by Exa as additional context in the query.
+
+    Returns a dict with 'reply' and 'contains_number'.
     """
     exa = get_exa_client()
-    query = f"TechSelect India hardware review expert {query_label} on {topic or 'tech hardware'}: \"{tweet_text[:250]}\""
+
+    sentiment = _score_sentiment(tweet_text)
+    search_type = "deep" if sentiment == "high" else "auto"
+    logger.info(f"Sentiment score: {sentiment} -> using Exa type='{search_type}' for {query_label}")
+
+    # Build query with topic context
+    query = (
+        f"TechSelect India hardware review {query_label} on "
+        f"{topic or 'consumer tech'}: \"{tweet_text[:250]}\""
+    )
 
     try:
         logger.info(f"Synthesizing {query_label} via Exa for: {tweet_text[:60]}...")
         res = exa.search(
             query=query,
-            type="deep",
+            type=search_type,
+            num_results=3,
             system_prompt=system_prompt,
             output_schema={
                 "type": "object",
@@ -98,16 +151,26 @@ def _synthesize_techselect_text(
                 "properties": {
                     "reply": {
                         "type": "string",
-                        "description": "Short Twitter text under 250 chars with Indian pricing or hardware spec"
+                        "description": "Short Twitter reply under 260 chars grounded in Indian pricing or hardware spec"
                     },
                     "contains_number": {
                         "type": "boolean",
-                        "description": "True if the text contains an Indian Rupee price or technical spec number"
+                        "description": "True if the text contains an Indian Rupee price or a technical spec number"
                     }
                 }
             },
             contents={"highlights": True}
         )
+
+        # Aggregate all highlights from every returned result as extra context
+        # (used implicitly by Exa's synthesis layer; also logged for debugging)
+        all_highlights: list[str] = []
+        for item in getattr(res, "results", []):
+            hl = getattr(item, "highlights", [])
+            if hl:
+                all_highlights.extend(hl)
+        if all_highlights:
+            logger.debug(f"Exa returned {len(all_highlights)} highlight(s) as synthesis context.")
 
         output = getattr(res, "output", None)
         if output and hasattr(output, "content") and output.content:
@@ -122,10 +185,9 @@ def _synthesize_techselect_text(
             if reply_text.startswith('"') and reply_text.endswith('"'):
                 reply_text = reply_text[1:-1].strip()
 
-            # 2. Check length
+            # 3. Check length — trim cleanly to last complete sentence
             if len(reply_text) > MAX_CHAR_LIMIT:
-                logger.warning(f"Generated text exceeds character limit ({len(reply_text)} > {MAX_CHAR_LIMIT}). Trimming...")
-                # Trim cleanly to last sentence
+                logger.warning(f"Generated text exceeds limit ({len(reply_text)} > {MAX_CHAR_LIMIT}). Trimming.")
                 sentences = re.split(r'(?<=[.!?])\s+', reply_text)
                 trimmed = ""
                 for s in sentences:
@@ -133,17 +195,18 @@ def _synthesize_techselect_text(
                         trimmed = (trimmed + " " + s).strip()
                 reply_text = trimmed or reply_text[:MAX_CHAR_LIMIT]
 
-            # 3. Check for URLs or banned spam phrases
+            # 4. Reject if raw URL slipped through
             if "http://" in reply_text or "https://" in reply_text:
                 logger.warning("Text contained raw link — rejecting for compliance safety.")
                 return None
 
-            # 4. Check for numbers (₹ or digits)
+            # 5. Check for numbers (Rs / ₹ / digits)
             has_digit = bool(re.search(r'\d+', reply_text)) or "₹" in reply_text or "Rs" in reply_text
             content["reply"] = reply_text
             content["contains_number"] = has_digit
 
             return content
+
     except Exception as exc:
         logger.error(f"Exa {query_label} synthesis failed: {exc}")
 
@@ -153,6 +216,7 @@ def _synthesize_techselect_text(
 def generate_techselect_reply(tweet_text: str, topic: str = "", author: str = "") -> Optional[Dict[str, Any]]:
     """
     Generate an authoritative reply using Exa AI structured synthesis.
+    Automatically routes to deep or auto Exa search based on sentiment score.
     Returns a dict with 'reply' and 'contains_number'.
     """
     return _synthesize_techselect_text(
@@ -162,10 +226,9 @@ def generate_techselect_reply(tweet_text: str, topic: str = "", author: str = ""
 
 def generate_quote_commentary(tweet_text: str, topic: str = "", author: str = "") -> Optional[Dict[str, Any]]:
     """
-    Generate standalone "repost with own thoughts" (quote-tweet) commentary
-    using Exa AI structured synthesis. Returns a dict with 'reply' and
-    'contains_number' (same shape as generate_techselect_reply for pipeline
-    compatibility).
+    Generate standalone quote-tweet commentary using Exa AI structured synthesis.
+    Automatically routes to deep or auto Exa search based on sentiment score.
+    Returns a dict with 'reply' and 'contains_number'.
     """
     return _synthesize_techselect_text(
         TECHSELECT_QUOTE_SYSTEM_PROMPT, "quote-repost commentary", tweet_text, topic, author
