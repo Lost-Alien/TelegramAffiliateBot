@@ -71,40 +71,11 @@ TONE GUIDE:
 - Reads like the smartest person in the group chat, not a press release.
 """
 
-
-# ---------------------------------------------------------------------------
-# Sentiment / Signal Scorer — runs locally, zero Exa credits
-# ---------------------------------------------------------------------------
-# High-signal patterns that justify a type="deep" Exa call (richer synthesis,
-# more credit cost). Everything else uses type="auto" (cheaper, faster).
-_HIGH_SIGNAL_PATTERNS = re.compile(
-    r"""
-    # Pricing anger / shock
-    (\bhike\b|\bprice\s*rise\b|\bexpensive\b|\boverpriced\b|\bcostly\b)|
-    # Comparisons that need real data
-    (\bvs\b|\bcompare\b|\bcomparison\b|\bbetter\s+than\b|\bworth\b|\bswitch\b)|
-    # Telecom / policy controversy
-    (\bairtel\b|\bjio\b|\bbsnl\b|\bvi\b|\btelecom\b|\btariff\b|\bplan\b|\brecharge\b)|
-    # Spec debate triggers
-    (\bsnapdragon\b|\bdimensity\b|\bexynos\b|\bbattery\b|\bcamera\b|\bdisplay\b|\bcharging\b)|
-    # Emotional frustration markers
-    (\bwhy\b.*\?|\bhow\s+long\b|\bstill\b|\bdisappointed\b|\bscam\b|\bripoff\b|\bunfair\b)|
-    # Indian rupee pricing in the text
-    (\u20b9|\brs\.?\s*\d+|\blakhs?\b|\brupees?\b)
-    """,
-    re.IGNORECASE | re.VERBOSE,
-)
-
-
-def _score_sentiment(text: str) -> str:
-    """
-    Returns 'high' if the tweet warrants a deep Exa synthesis call,
-    'low' if a cheaper auto call is sufficient.
-    """
-    matches = _HIGH_SIGNAL_PATTERNS.findall(text)
-    # Count non-empty match groups
-    hit_count = sum(1 for group_tuple in matches for m in group_tuple if m)
-    return "high" if hit_count >= 2 else "low"
+# Per-session virality score cache.
+# Exa LLM scores each reply (1-10). If a prior candidate scored >= 7,
+# the next call upgrades to type="deep" for richer synthesis.
+# Defaults to 5 (neutral) so the first call always uses type="auto".
+_last_virality_score: int = 5
 
 
 def _synthesize_techselect_text(
@@ -118,21 +89,27 @@ def _synthesize_techselect_text(
     Shared Exa synthesis + safety guardrails used by both reply and
     quote-repost generation.
 
-    Credit-efficiency logic:
-    - Runs a local sentiment scorer (zero credits) first.
-    - HIGH signal (controversy, pricing, spec debate) → type="deep" for richer synthesis.
-    - LOW signal (generic/informational) → type="auto" (60-70% cheaper).
-    - Aggregates ALL highlights returned by Exa as additional context in the query.
+    Credit-efficiency logic (Exa LLM as the scorer, no external model needed):
+    - The output_schema asks Exa to return virality_score (1-10) and sentiment
+      alongside the reply, using its own LLM judgment.
+    - The previous call's virality_score determines this call's search_type:
+        score >= 7  (high engagement potential)  -> type="deep"
+        score < 7   (standard/generic content)   -> type="auto" (cheaper)
+    - First call always uses type="auto" (default score = 5).
+    - Aggregates ALL result highlights as synthesis context.
 
-    Returns a dict with 'reply' and 'contains_number'.
+    Returns a dict with 'reply', 'contains_number', 'virality_score', 'sentiment'.
     """
+    global _last_virality_score
     exa = get_exa_client()
 
-    sentiment = _score_sentiment(tweet_text)
-    search_type = "deep" if sentiment == "high" else "auto"
-    logger.info(f"Sentiment score: {sentiment} -> using Exa type='{search_type}' for {query_label}")
+    # Route based on previous call's Exa-predicted virality
+    search_type = "deep" if _last_virality_score >= 7 else "auto"
+    logger.info(
+        f"Exa virality score from last call: {_last_virality_score}/10 "
+        f"-> using type='{search_type}' for {query_label}"
+    )
 
-    # Build query with topic context
     query = (
         f"TechSelect India hardware review {query_label} on "
         f"{topic or 'consumer tech'}: \"{tweet_text[:250]}\""
@@ -147,7 +124,7 @@ def _synthesize_techselect_text(
             system_prompt=system_prompt,
             output_schema={
                 "type": "object",
-                "required": ["reply", "contains_number"],
+                "required": ["reply", "contains_number", "virality_score", "sentiment"],
                 "properties": {
                     "reply": {
                         "type": "string",
@@ -155,7 +132,22 @@ def _synthesize_techselect_text(
                     },
                     "contains_number": {
                         "type": "boolean",
-                        "description": "True if the text contains an Indian Rupee price or a technical spec number"
+                        "description": "True if the reply contains an Indian Rupee price or a technical spec number"
+                    },
+                    "virality_score": {
+                        "type": "integer",
+                        "description": (
+                            "Score from 1 to 10 predicting how likely this tweet is to generate replies and engagement. "
+                            "10 = highly controversial, emotional, or contains shocking price data. "
+                            "1 = generic announcement with no debate potential. "
+                            "Consider: sarcasm, frustration, price shock, spec comparison, telecom controversy, "
+                            "forced choice questions."
+                        )
+                    },
+                    "sentiment": {
+                        "type": "string",
+                        "enum": ["frustrated", "excited", "curious", "neutral", "sarcastic", "outraged"],
+                        "description": "Dominant sentiment of the original tweet being replied to"
                     }
                 }
             },
@@ -204,6 +196,14 @@ def _synthesize_techselect_text(
             has_digit = bool(re.search(r'\d+', reply_text)) or "₹" in reply_text or "Rs" in reply_text
             content["reply"] = reply_text
             content["contains_number"] = has_digit
+
+            # 6. Cache Exa LLM virality score for next call routing
+            _last_virality_score = int(content.get("virality_score", 5))
+            sentiment_label = content.get("sentiment", "neutral")
+            logger.info(
+                f"Exa LLM scored this candidate: virality={_last_virality_score}/10, "
+                f"sentiment={sentiment_label}"
+            )
 
             return content
 
