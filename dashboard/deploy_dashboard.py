@@ -1,27 +1,46 @@
 """
 TechSelect Bot — Cookie Deploy Dashboard
 =========================================
-Local web dashboard to update X (Twitter) cookies and deploy to EC2.
+Remote-accessible web dashboard to update X (Twitter) cookies and deploy to EC2.
+Protected by a secret token — access from any browser/device on the internet.
 
 Usage:
     python dashboard/deploy_dashboard.py
 
-Opens at: http://localhost:7777
+Local:   http://localhost:7777/?token=<DASHBOARD_SECRET>
+Remote:  http://<your-ip>:7777/?token=<DASHBOARD_SECRET>
+
+Set DASHBOARD_SECRET in environment or .env to secure the dashboard.
+Set DASHBOARD_PORT to change the port (default: 7777).
 """
 import http.server
+import ipaddress
 import json
 import os
 import re
+import socket
 import subprocess
 import threading
 import urllib.parse
+import urllib.request
 import webbrowser
 from pathlib import Path
 
 # ── Config ──────────────────────────────────────────────────────────────────
-DASHBOARD_PORT = 7777
+DASHBOARD_PORT = int(os.getenv("DASHBOARD_PORT", "7777"))
+DASHBOARD_HOST = "0.0.0.0"   # Bind to all interfaces — accessible from anywhere
+# Secret token required to access the dashboard from any IP.
+# Set via environment: DASHBOARD_SECRET=your_secret_here
+# If not set, a random token is generated each run (printed in startup banner).
+_SECRET_ENV = os.getenv("DASHBOARD_SECRET", "").strip()
+if not _SECRET_ENV:
+    import secrets as _secrets
+    _SECRET_ENV = _secrets.token_urlsafe(16)
+    print(f"[Dashboard] No DASHBOARD_SECRET set — generated one-time token: {_SECRET_ENV}")
+DASHBOARD_SECRET = _SECRET_ENV
+
 ENV_FILE = Path(__file__).parent.parent / "TelegramDealAutoPoster" / ".env"
-EC2_HOST = "ubuntu@13.239.243.61"
+EC2_HOST = "ubuntu@15.134.55.124"
 EC2_REMOTE_ENV = "/opt/telegrambot/app/TelegramDealAutoPoster/.env"
 EC2_REMOTE_XPOSTER = "/opt/telegrambot/app/TelegramDealAutoPoster/x_poster.py"
 EC2_CONTAINER = "telegram_deal_poster"
@@ -42,6 +61,35 @@ def find_ssh_key():
         if Path(key).exists():
             return key
     return None
+
+
+def _get_local_ip() -> str:
+    """Get the machine's LAN IP address."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "127.0.0.1"
+
+
+def _get_public_ip() -> str:
+    """Get the machine's public (internet-facing) IP address."""
+    for url in [
+        "https://api.ipify.org",
+        "https://checkip.amazonaws.com",
+        "https://icanhazip.com",
+    ]:
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "curl/7.0"})
+            with urllib.request.urlopen(req, timeout=5) as r:
+                return r.read().decode().strip()
+        except Exception:
+            continue
+    return "<public-ip-unknown>"
+
 
 
 def update_env_var(env_path: Path, key: str, value: str) -> bool:
@@ -149,10 +197,12 @@ def deploy_cookies(auth_token: str, ct0: str) -> list[dict]:
 
 
 def deploy_full_code() -> list[dict]:
-    """Pull latest code from GitHub on EC2 and restart Docker container.
+    """SCP all updated source files to EC2 and restart Docker container.
 
-    SSH command:
-        cd /opt/telegrambot/app && git pull origin main && docker restart <container>
+    EC2 runs via direct file deployment (not git clone), so we SCP changed
+    files and restart the container. Files deployed:
+      - TelegramDealAutoPoster/x_poster.py
+      - TelegramDealAutoPoster/flush_csv_via_xactions.py
 
     Returns list of step results dicts: [{name, ok, detail}]
     """
@@ -163,19 +213,30 @@ def deploy_full_code() -> list[dict]:
         return [{"name": "SSH Key", "ok": False,
                  "detail": "No SSH key found. Add your key to ~/.ssh/"}]
 
-    # Step 1: git pull on EC2
-    pull_cmd = [
-        "ssh", "-i", ssh_key,
-        "-o", "StrictHostKeyChecking=no",
-        "-o", "ConnectTimeout=15",
-        EC2_HOST,
-        "cd /opt/telegrambot/app && git pull origin main 2>&1",
-    ]
-    ok_pull, out_pull = run_cmd(pull_cmd, timeout=60)
-    steps.append({"name": "git pull origin main on EC2", "ok": ok_pull,
-                  "detail": out_pull or "Done"})
+    EC2_REMOTE_BASE = "/opt/telegrambot/app/TelegramDealAutoPoster"
+    local_base = ENV_FILE.parent  # TelegramDealAutoPoster/
 
-    # Step 2: docker restart
+    # Files to deploy
+    files_to_deploy = [
+        ("x_poster.py",               f"{EC2_REMOTE_BASE}/x_poster.py"),
+        ("flush_csv_via_xactions.py",  f"{EC2_REMOTE_BASE}/flush_csv_via_xactions.py"),
+    ]
+
+    # Step 1-N: SCP each file
+    for local_name, remote_path in files_to_deploy:
+        local_path = str(local_base / local_name)
+        scp_cmd = [
+            "scp", "-i", ssh_key,
+            "-o", "StrictHostKeyChecking=no",
+            "-o", "ConnectTimeout=15",
+            local_path,
+            f"{EC2_HOST}:{remote_path}",
+        ]
+        ok, out = run_cmd(scp_cmd, timeout=30)
+        steps.append({"name": f"SCP {local_name} → EC2", "ok": ok,
+                      "detail": out or "Done"})
+
+    # Step N+1: docker restart
     restart_cmd = [
         "ssh", "-i", ssh_key,
         "-o", "StrictHostKeyChecking=no",
@@ -187,7 +248,7 @@ def deploy_full_code() -> list[dict]:
     steps.append({"name": f"Restart Docker ({EC2_CONTAINER})", "ok": ok_restart,
                   "detail": out_restart or "Done"})
 
-    # Step 3: verify container is running
+    # Step N+2: verify container is running
     verify_cmd = [
         "ssh", "-i", ssh_key,
         "-o", "StrictHostKeyChecking=no",
@@ -500,7 +561,7 @@ def render_html(result_json: str = "null") -> str:
     </div>
   </div>
 
-  <footer>TechSelect Bot Deploy Dashboard · Running on localhost:{DASHBOARD_PORT}</footer>
+  <footer>TechSelect Bot Deploy Dashboard &middot; Port {DASHBOARD_PORT}</footer>
 
 </div>
 
@@ -511,6 +572,14 @@ const codeBtn = document.getElementById('codeDeployBtn');
 const resultsDiv = document.getElementById('results');
 const stepsList = document.getElementById('stepsList');
 const resultSummary = document.getElementById('resultSummary');
+
+// Read token from URL ?token= param and send it as a header on every request
+function getToken() {{
+  return new URLSearchParams(window.location.search).get('token') || '';
+}}
+function authHeaders(extra) {{
+  return Object.assign({{ 'X-Dashboard-Token': getToken() }}, extra || {{}});
+}}
 
 function showSteps(steps, allOk) {{
   stepsList.innerHTML = '';
@@ -552,7 +621,7 @@ form.addEventListener('submit', async (e) => {{
   try {{
     const res = await fetch('/deploy', {{
       method: 'POST',
-      headers: {{ 'Content-Type': 'application/json' }},
+      headers: authHeaders({{ 'Content-Type': 'application/json' }}),
       body: JSON.stringify({{ auth_token, ct0 }})
     }});
     const data = await res.json();
@@ -577,7 +646,7 @@ codeBtn.addEventListener('click', async () => {{
   window.scrollTo({{ top: document.body.scrollHeight, behavior: 'smooth' }});
 
   try {{
-    const res = await fetch('/deploy-code', {{ method: 'POST' }});
+    const res = await fetch('/deploy-code', {{ method: 'POST', headers: authHeaders() }});
     const data = await res.json();
     const allOk = data.steps.every(s => s.ok);
     showSteps(data.steps, allOk);
@@ -599,11 +668,47 @@ codeBtn.addEventListener('click', async () => {{
 
 class DashboardHandler(http.server.BaseHTTPRequestHandler):
 
-    def log_message(self, format, *args):
-        pass  # Silence default request log
+    def log_message(self, fmt, *args):
+        # Custom log: show IP + path
+        client_ip = self.client_address[0]
+        print(f"[Dashboard] {client_ip} — {args[0] if args else fmt}")
+
+    def _check_auth(self) -> bool:
+        """Validate DASHBOARD_SECRET via:
+          1. X-Dashboard-Token request header  (API/fetch calls)
+          2. ?token= query string parameter    (browser direct access)
+        Returns True if authorised, sends 401 and returns False if not.
+        """
+        # Check header
+        header_token = self.headers.get("X-Dashboard-Token", "").strip()
+        if header_token == DASHBOARD_SECRET:
+            return True
+
+        # Check query string
+        parsed = urllib.parse.urlparse(self.path)
+        params = urllib.parse.parse_qs(parsed.query)
+        qs_token = params.get("token", [""])[0].strip()
+        if qs_token == DASHBOARD_SECRET:
+            return True
+
+        # Reject
+        body = json.dumps({"error": "Unauthorized — invalid or missing token"}).encode()
+        self.send_response(401)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", len(body))
+        self.send_header("WWW-Authenticate", 'Bearer realm="TechSelect Dashboard"')
+        self.end_headers()
+        self.wfile.write(body)
+        return False
+
+    def _clean_path(self) -> str:
+        """Return path without query string."""
+        return urllib.parse.urlparse(self.path).path
 
     def do_GET(self):
-        if self.path in ("/", "/index.html"):
+        if not self._check_auth():
+            return
+        if self._clean_path() in ("/", "/index.html"):
             html = render_html().encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -615,7 +720,10 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
 
     def do_POST(self):
-        if self.path == "/deploy":
+        if not self._check_auth():
+            return
+        clean = self._clean_path()
+        if clean == "/deploy":
             content_len = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(content_len)
             try:
@@ -627,15 +735,17 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
                     self._json({"error": "auth_token and ct0 required"}, 400)
                     return
 
-                print(f"[Dashboard] Deploying cookies (auth_token={auth_token[:8]}...)")
+                client_ip = self.client_address[0]
+                print(f"[Dashboard] Deploy triggered by {client_ip} (auth_token={auth_token[:8]}...)")
                 steps = deploy_cookies(auth_token, ct0)
                 self._json({"steps": steps})
 
             except Exception as e:
                 self._json({"error": str(e)}, 500)
 
-        elif self.path == "/deploy-code":
-            print("[Dashboard] Pulling latest code on EC2 and restarting container...")
+        elif clean == "/deploy-code":
+            client_ip = self.client_address[0]
+            print(f"[Dashboard] Code deploy triggered by {client_ip}")
             try:
                 steps = deploy_full_code()
                 self._json({"steps": steps})
@@ -658,20 +768,34 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    print(f"""
-╔══════════════════════════════════════════════════════╗
-║      TechSelect Bot — Cookie Deploy Dashboard        ║
-╠══════════════════════════════════════════════════════╣
-║  URL  : http://localhost:{DASHBOARD_PORT}                     ║
-║  .env : {str(ENV_FILE)[:45]:<45}  ║
-║  EC2  : {EC2_HOST:<45}  ║
-╚══════════════════════════════════════════════════════╝
+    local_ip  = _get_local_ip()
+    print("[Dashboard] Detecting public IP...")
+    public_ip = _get_public_ip()
+    tok       = DASHBOARD_SECRET
 
-Opening browser...
+    local_url  = f"http://localhost:{DASHBOARD_PORT}/?token={tok}"
+    lan_url    = f"http://{local_ip}:{DASHBOARD_PORT}/?token={tok}"
+    public_url = f"http://{public_ip}:{DASHBOARD_PORT}/?token={tok}"
+
+    print(f"""
+╔══════════════════════════════════════════════════════════════════════╗
+║         TechSelect Bot — Deploy Dashboard  (Remote Access ON)        ║
+╠══════════════════════════════════════════════════════════════════════╣
+║  🖥  Local  : {local_url:<54} ║
+║  🏠 LAN     : {lan_url:<54} ║
+║  🌐 Public  : {public_url:<54} ║
+╠══════════════════════════════════════════════════════════════════════╣
+║  🔑 Token   : {tok:<54} ║
+║  🚢 EC2     : {EC2_HOST:<54} ║
+║  🐳 Docker  : {EC2_CONTAINER:<54} ║
+╠══════════════════════════════════════════════════════════════════════╣
+║  ⚠️  Share only the full URL (with ?token=) — keep it private!       ║
+║  Set DASHBOARD_SECRET=<token> in env to make the token permanent.    ║
+╚══════════════════════════════════════════════════════════════════════╝
 """)
 
-    server = http.server.HTTPServer(("127.0.0.1", DASHBOARD_PORT), DashboardHandler)
-    threading.Timer(1.0, lambda: webbrowser.open(f"http://localhost:{DASHBOARD_PORT}")).start()
+    server = http.server.HTTPServer((DASHBOARD_HOST, DASHBOARD_PORT), DashboardHandler)
+    threading.Timer(1.5, lambda: webbrowser.open(local_url)).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
