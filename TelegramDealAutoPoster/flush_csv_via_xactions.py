@@ -88,6 +88,18 @@ DEFAULT_FEATURES = {
 WEBSITE_URL = "https://techselect.blog"
 
 
+def _build_hook_text_from_row(title: str, hashtags: str) -> str:
+    """Build link-free hook tweet for Step 1 of the PriceHawk two-step method.
+    Mirrors the logic in x_poster._build_hook_tweet() but operates on CSV row fields.
+    """
+    import os as _os
+    max_title = int(_os.getenv("DEAL_PRODUCT_MAX_LEN", "80"))
+    t = title.strip()
+    if len(t) > max_title:
+        t = t[:max_title - 3] + "..."
+    return f"{t} just dropped!\n\n\ud83d\udc47 Amazon link in reply below"
+
+
 def xactions_post(tweet_text: str) -> tuple[bool, str]:
     """Post tweet via XActions GraphQL. Returns (success, tweet_id_or_error)."""
     url = f"https://x.com/i/api/graphql/{CREATE_TWEET_QUERY_ID}/CreateTweet"
@@ -227,24 +239,75 @@ def main():
     posted = []
     failed = []
 
+    posting_mode = os.getenv("DEAL_POSTING_MODE", "two_step").lower().strip()
+
+    # Import reply engine for two-step mode
+    _reply_fn = None
+    if posting_mode == "two_step":
+        try:
+            import sys as _sys, os as _os
+            _sys.path.insert(0, str(Path(__file__).parent))
+            from x_poster import _xactions_reply_tweet  # type: ignore
+            _reply_fn = _xactions_reply_tweet
+        except ImportError as _ie:
+            print(f"  ⚠️  Could not import _xactions_reply_tweet: {_ie}. Falling back to single-tweet mode.")
+            posting_mode = "single_tweet"
+
     for i, row in enumerate(real_rows, 1):
         title    = row.get("title", "Tech Deal Alert").strip()
         url      = row.get("url", "").strip()
         hashtags = row.get("hashtags", "#TechDeals #TechSelect #Ad").strip()
 
-        tweet_text = format_tweet(title, url, hashtags)
+        # Normalise hashtags to algorithm-safe set
+        clean_hashtags = os.getenv("DEAL_HASHTAGS", "#TechDeals #Ad").strip()
 
-        print(f"[{i}/{len(real_rows)}] Posting: {title[:60]}...")
+        print(f"[{i}/{len(real_rows)}] Posting ({posting_mode}): {title[:60]}...")
         print(f"          URL: {url}")
 
-        success, result = xactions_post(tweet_text)
+        if posting_mode == "two_step" and _reply_fn is not None:
+            # ── STEP 1: Hook tweet (no link) ─────────────────────────────
+            hook_text = _build_hook_text_from_row(title, clean_hashtags)
+            hook_ok, hook_result = xactions_post(hook_text)
 
-        if success:
-            print(f"          ✅ Tweet ID: {result}\n")
-            posted.append(row)
+            if hook_ok and hook_result not in ("posted", "OK", ""):
+                # ── STEP 2: Reply with affiliate link via XActions ─────────
+                import time as _time
+                _time.sleep(2)
+                reply_text = f"\ud83d\uded2 Amazon: {url}\n\n{clean_hashtags}"
+                reply_ok, reply_result = _reply_fn(AUTH_TOKEN, CT0, reply_text, hook_result)
+
+                if reply_ok:
+                    print(f"          ✅ Two-step complete — Hook ID: {hook_result} | Reply ID: {reply_result}\n")
+                    posted.append(row)
+                else:
+                    print(f"          ⚠️  Hook posted (ID={hook_result}) but reply failed: {reply_result}\n")
+                    posted.append(row)  # Hook is live — still count
+            elif hook_ok:
+                # Hook posted but tweet_id not parseable — post reply as standalone
+                print(f"          ⚠️  Hook posted but ID not parseable — posting link as standalone tweet.")
+                link_tweet = format_tweet(title, url, clean_hashtags)
+                ok2, res2 = xactions_post(link_tweet)
+                if ok2:
+                    print(f"          ✅ Standalone fallback posted — ID: {res2}\n")
+                    posted.append(row)
+                else:
+                    print(f"          ❌ Standalone fallback also failed: {res2}\n")
+                    failed.append((row, res2))
+            else:
+                print(f"          ❌ Hook failed: {hook_result}\n")
+                failed.append((row, hook_result))
+
         else:
-            print(f"          ❌ Failed: {result}\n")
-            failed.append((row, result))
+            # ── Single-tweet mode (legacy) ───────────────────────────────
+            tweet_text = format_tweet(title, url, hashtags)
+            success, result = xactions_post(tweet_text)
+
+            if success:
+                print(f"          ✅ Tweet ID: {result}\n")
+                posted.append(row)
+            else:
+                print(f"          ❌ Failed: {result}\n")
+                failed.append((row, result))
 
         # Rate limit safety: 8s between tweets
         if i < len(real_rows):

@@ -148,6 +148,61 @@ def deploy_cookies(auth_token: str, ct0: str) -> list[dict]:
     return steps
 
 
+def deploy_full_code() -> list[dict]:
+    """Pull latest code from GitHub on EC2 and restart Docker container.
+
+    SSH command:
+        cd /opt/telegrambot/app && git pull origin main && docker restart <container>
+
+    Returns list of step results dicts: [{name, ok, detail}]
+    """
+    steps = []
+    ssh_key = find_ssh_key()
+
+    if not ssh_key:
+        return [{"name": "SSH Key", "ok": False,
+                 "detail": "No SSH key found. Add your key to ~/.ssh/"}]
+
+    # Step 1: git pull on EC2
+    pull_cmd = [
+        "ssh", "-i", ssh_key,
+        "-o", "StrictHostKeyChecking=no",
+        "-o", "ConnectTimeout=15",
+        EC2_HOST,
+        "cd /opt/telegrambot/app && git pull origin main 2>&1",
+    ]
+    ok_pull, out_pull = run_cmd(pull_cmd, timeout=60)
+    steps.append({"name": "git pull origin main on EC2", "ok": ok_pull,
+                  "detail": out_pull or "Done"})
+
+    # Step 2: docker restart
+    restart_cmd = [
+        "ssh", "-i", ssh_key,
+        "-o", "StrictHostKeyChecking=no",
+        "-o", "ConnectTimeout=10",
+        EC2_HOST,
+        f"docker restart {EC2_CONTAINER} 2>&1",
+    ]
+    ok_restart, out_restart = run_cmd(restart_cmd, timeout=30)
+    steps.append({"name": f"Restart Docker ({EC2_CONTAINER})", "ok": ok_restart,
+                  "detail": out_restart or "Done"})
+
+    # Step 3: verify container is running
+    verify_cmd = [
+        "ssh", "-i", ssh_key,
+        "-o", "StrictHostKeyChecking=no",
+        "-o", "ConnectTimeout=10",
+        EC2_HOST,
+        f"docker inspect --format='{{{{.State.Status}}}}' {EC2_CONTAINER} 2>&1",
+    ]
+    ok_v, out_v = run_cmd(verify_cmd, timeout=15)
+    is_running = ok_v and "running" in out_v.lower()
+    steps.append({"name": "Container health check", "ok": is_running,
+                  "detail": out_v.strip() or "unknown"})
+
+    return steps
+
+
 # ── HTML Template ─────────────────────────────────────────────────────────────
 
 def render_html(result_json: str = "null") -> str:
@@ -427,6 +482,15 @@ def render_html(result_json: str = "null") -> str:
     </form>
   </div>
 
+  <!-- Code deploy button -->
+  <div class="card">
+    <h2>🔄 Deploy Latest Code</h2>
+    <p class="desc">Runs <code>git pull origin main</code> on EC2 then restarts the Docker container. Use after pushing new commits to GitHub.</p>
+    <button class="btn-deploy" id="codeDeployBtn" style="background:linear-gradient(135deg,#388bfd,#1a4f9f);">
+      🔄 Pull Latest Code → Restart EC2
+    </button>
+  </div>
+
   <!-- Results -->
   <div id="results">
     <div class="card">
@@ -443,9 +507,30 @@ def render_html(result_json: str = "null") -> str:
 <script>
 const form = document.getElementById('cookieForm');
 const btn = document.getElementById('deployBtn');
+const codeBtn = document.getElementById('codeDeployBtn');
 const resultsDiv = document.getElementById('results');
 const stepsList = document.getElementById('stepsList');
 const resultSummary = document.getElementById('resultSummary');
+
+function showSteps(steps, allOk) {{
+  stepsList.innerHTML = '';
+  for (const step of steps) {{
+    const div = document.createElement('div');
+    div.className = 'result-item ' + (step.ok ? 'ok' : 'fail');
+    div.innerHTML = `
+      <div class="result-icon">${{step.ok ? '✅' : '❌'}}</div>
+      <div>
+        <div class="result-name">${{step.name}}</div>
+        <div class="result-detail">${{step.detail}}</div>
+      </div>
+    `;
+    stepsList.appendChild(div);
+  }}
+  resultSummary.textContent = allOk
+    ? '🎉 All steps completed successfully!'
+    : '⚠️ Some steps failed — check details above.';
+  resultSummary.style.color = allOk ? '#39d353' : '#e3b341';
+}}
 
 form.addEventListener('submit', async (e) => {{
   e.preventDefault();
@@ -461,7 +546,7 @@ form.addEventListener('submit', async (e) => {{
   btn.innerHTML = '<span class="spinner"></span> Deploying...';
   resultsDiv.style.display = 'block';
   stepsList.innerHTML = '<div style="color:#8b949e;font-size:0.85rem;padding:0.5rem">⏳ Running deployment pipeline...</div>';
-  resultSummary.textContent = 'Deploying to EC2...';
+  resultSummary.textContent = 'Deploying cookies to EC2...';
   window.scrollTo({{ top: document.body.scrollHeight, behavior: 'smooth' }});
 
   try {{
@@ -471,36 +556,38 @@ form.addEventListener('submit', async (e) => {{
       body: JSON.stringify({{ auth_token, ct0 }})
     }});
     const data = await res.json();
-
-    stepsList.innerHTML = '';
-    let allOk = true;
-    for (const step of data.steps) {{
-      if (!step.ok) allOk = false;
-      const div = document.createElement('div');
-      div.className = 'result-item ' + (step.ok ? 'ok' : 'fail');
-      div.innerHTML = `
-        <div class="result-icon">${{step.ok ? '✅' : '❌'}}</div>
-        <div>
-          <div class="result-name">${{step.name}}</div>
-          <div class="result-detail">${{step.detail}}</div>
-        </div>
-      `;
-      stepsList.appendChild(div);
-    }}
-
-    resultSummary.textContent = allOk
-      ? '🎉 All steps completed! Bot is live with new cookies.'
-      : '⚠️ Some steps failed — check details above.';
-    resultSummary.style.color = allOk ? '#39d353' : '#e3b341';
-
+    const allOk = data.steps.every(s => s.ok);
+    showSteps(data.steps, allOk);
     btn.disabled = false;
     btn.innerHTML = allOk ? '✅ Deployed! Deploy Again' : '🔄 Retry Deploy';
-
   }} catch (err) {{
     stepsList.innerHTML = `<div class="result-item fail"><div class="result-icon">❌</div><div><div class="result-name">Request failed</div><div class="result-detail">${{err.message}}</div></div></div>`;
     resultSummary.textContent = 'Deployment failed — see error above.';
     btn.disabled = false;
     btn.innerHTML = '🔄 Retry';
+  }}
+}});
+
+codeBtn.addEventListener('click', async () => {{
+  codeBtn.disabled = true;
+  codeBtn.innerHTML = '<span class="spinner"></span> Pulling code...';
+  resultsDiv.style.display = 'block';
+  stepsList.innerHTML = '<div style="color:#8b949e;font-size:0.85rem;padding:0.5rem">⏳ SSH → git pull → docker restart...</div>';
+  resultSummary.textContent = 'Pulling latest code on EC2...';
+  window.scrollTo({{ top: document.body.scrollHeight, behavior: 'smooth' }});
+
+  try {{
+    const res = await fetch('/deploy-code', {{ method: 'POST' }});
+    const data = await res.json();
+    const allOk = data.steps.every(s => s.ok);
+    showSteps(data.steps, allOk);
+    codeBtn.disabled = false;
+    codeBtn.innerHTML = allOk ? '✅ Code Deployed! Pull Again' : '🔄 Retry Pull';
+  }} catch (err) {{
+    stepsList.innerHTML = `<div class="result-item fail"><div class="result-icon">❌</div><div><div class="result-name">Request failed</div><div class="result-detail">${{err.message}}</div></div></div>`;
+    resultSummary.textContent = 'Code deploy failed — see error above.';
+    codeBtn.disabled = false;
+    codeBtn.innerHTML = '🔄 Retry';
   }}
 }});
 </script>
@@ -546,6 +633,15 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
 
             except Exception as e:
                 self._json({"error": str(e)}, 500)
+
+        elif self.path == "/deploy-code":
+            print("[Dashboard] Pulling latest code on EC2 and restarting container...")
+            try:
+                steps = deploy_full_code()
+                self._json({"steps": steps})
+            except Exception as e:
+                self._json({"error": str(e)}, 500)
+
         else:
             self.send_response(404)
             self.end_headers()
