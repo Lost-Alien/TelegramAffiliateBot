@@ -146,24 +146,49 @@ def xactions_post(tweet_text: str) -> tuple[bool, str]:
 
 
 def format_tweet(title: str, url: str, hashtags: str) -> str:
-    """Build high-converting tweet text with Loot & Sale badges under 280 chars."""
+    """PriceHawk-style deal card for queued CSV posts.
+
+    Inspired by cld-maindev/pricehawk patterns:
+      * Single outbound link only (no secondary website URL — avoids X dual-link penalty)
+      * Max 2 hashtags (X algorithm suppresses posts with >2 hashtags as spam)
+      * Price anchoring headline for instant value recognition
+
+    To revert to legacy Loot/Sale format, set DEAL_FORMAT_STYLE=loot_sale in env.
+    """
+    import os as _os
+
+    style = _os.getenv("DEAL_FORMAT_STYLE", "pricehawk").lower().strip()
+
+    if style == "loot_sale":
+        # Legacy format (backward compat)
+        title = title.strip()
+        if len(title) > 130:
+            title = title[:127] + "..."
+        if hashtags == "#TechDeals #TechSelect #Ad" or not hashtags:
+            hashtags = "#Loot #LootDeal #AmazonSale #TechDeals #Ad"
+        return (
+            f"🔥 MEGA LOOT SALE 💥\n"
+            f"⚡ {title}\n\n"
+            f"🛒 Grab Loot: {url}\n"
+            f"🌐 Live Sales: {WEBSITE_URL}\n\n"
+            f"{hashtags}"
+        )
+
+    # ── PriceHawk format (default) ──────────────────────────────────────────
     title = title.strip()
-    max_title = 130
-    if len(title) > max_title:
-        title = title[:max_title - 3] + "..."
+    # Trim to 80 chars to leave budget for price / coupon lines
+    if len(title) > 80:
+        title = title[:77] + "..."
 
-    # Use Loot & Sale hashtags if default hashtags provided
-    if hashtags == "#TechDeals #TechSelect #Ad" or not hashtags:
-        hashtags = "#Loot #LootDeal #AmazonSale #TechDeals #Ad"
+    # Use minimal algorithm-safe hashtags unless overridden
+    if not hashtags or hashtags in ("#TechDeals #TechSelect #Ad", "#Loot #LootDeal #AmazonSale #TechDeals #Ad"):
+        hashtags = _os.getenv("DEAL_HASHTAGS", "#TechDeals #Ad").strip()
 
-    tweet = (
-        f"🔥 MEGA LOOT SALE 💥\n"
-        f"⚡ {title}\n\n"
-        f"🛒 Grab Loot: {url}\n"
-        f"🌐 Live Sales: {WEBSITE_URL}\n\n"
+    return (
+        f"🔥 Price Drop: {title}\n\n"
+        f"🛒 Grab Deal: {url}\n\n"
         f"{hashtags}"
     )
-    return tweet
 
 
 def is_fake(url: str) -> bool:

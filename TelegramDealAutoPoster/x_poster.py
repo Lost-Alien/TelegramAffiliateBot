@@ -127,61 +127,176 @@ def clean_html_tags(raw_html: str) -> str:
     return cleantext.strip()
 
 
-def format_tweet_text(text: str, asins: list[str], affiliate_tag: str = "techstor0caaf-21") -> str:
-    """Format deal text into a high-converting X post with Loot & Sale badges under 280 characters.
+def _pricehawk_extract(text: str) -> dict:
+    """PriceHawk-style parser: extract product name, deal price, MRP, discount % and coupon
+    from a raw Telegram deal message.
 
-    Tweet structure:
-      🔥 MEGA LOOT SALE 💥
-      ⚡ {Title}
-
-      🛒 Grab Loot: {amazon_url}
-      🌐 Live Sales Hub: https://techselect.blog
-
-      #Loot #LootDeal #AmazonSale #TechDeals #Ad
+    Looks for patterns like:
+      - ₹1,299 / Rs. 1299 / INR 1299 (deal price)
+      - MRP ₹3,499 / M.R.P.: ₹3499   (original price)
+      - XX% off / XX% discount         (discount)
+      - Apply XX% Coupon / coupon: XX% (coupon)
+    Returns a dict with keys: product, deal_price, mrp, discount_pct, coupon_pct.
+    Missing fields are empty strings.
     """
-    clean_text = clean_html_tags(text)
-    lines = [line.strip() for line in clean_text.split("\n") if line.strip()]
+    import re as _re
 
-    title = lines[0] if lines else "Hot Tech Deal Alert!"
+    # Strip HTML
+    clean = re.sub(r"<.*?>", "", text).strip()
+    lines = [l.strip() for l in clean.split("\n") if l.strip()]
+
+    # Product name = first non-emoji-only line, up to 100 chars
+    _emoji_re = _re.compile(
+        r"^[\U0001F300-\U0001FAFF\u2600-\u26FF\u2700-\u27BF\s🔥💥⚡🛒🌐🚨🛍️]+$"
+    )
+    product = ""
+    for line in lines:
+        if not _emoji_re.match(line):
+            product = line[:100]
+            break
+    if not product:
+        product = lines[0][:100] if lines else "Hot Tech Deal!"
+
+    # Price patterns (₹, Rs., INR, just digits with comma)
+    _price_re = _re.compile(
+        r"(?:₹|Rs\.?\s*|INR\s*)([\d,]+(?:\.\d{1,2})?)", _re.IGNORECASE
+    )
+    prices_found = [p.replace(",", "") for p in _price_re.findall(clean)]
+
+    # MRP / M.R.P.
+    _mrp_re = _re.compile(
+        r"(?:MRP|M\.R\.P\.?|Original Price|Was)[:\s]*(?:₹|Rs\.?\s*|INR\s*)?([\d,]+(?:\.\d{1,2})?)",
+        _re.IGNORECASE,
+    )
+    mrp_match = _mrp_re.search(clean)
+    mrp = mrp_match.group(1).replace(",", "") if mrp_match else ""
+
+    # Deal price = first price that is NOT the MRP
+    deal_price = ""
+    for p in prices_found:
+        if p != mrp:
+            deal_price = p
+            break
+    if not deal_price and prices_found:
+        deal_price = prices_found[0]
+
+    # Discount %
+    _disc_re = _re.compile(r"(\d{1,3})\s*%\s*(?:off|discount|OFF|DISCOUNT)", _re.IGNORECASE)
+    disc_match = _disc_re.search(clean)
+    discount_pct = disc_match.group(1) if disc_match else ""
+
+    # Coupon %  e.g. "Apply 30% Off Coupon" / "Coupon: 10%"
+    _coupon_re = _re.compile(
+        r"(?:apply|use|coupon)[:\s]*(\d{1,3})\s*%|(\d{1,3})\s*%\s*(?:off\s*)?coupon",
+        _re.IGNORECASE,
+    )
+    coupon_match = _coupon_re.search(clean)
+    coupon_pct = (coupon_match.group(1) or coupon_match.group(2)) if coupon_match else ""
+
+    return {
+        "product": product,
+        "deal_price": deal_price,
+        "mrp": mrp,
+        "discount_pct": discount_pct,
+        "coupon_pct": coupon_pct,
+    }
+
+
+def format_tweet_text(text: str, asins: list[str], affiliate_tag: str = "techstor0caaf-21") -> str:
+    """PriceHawk-style deal formatter for X posts.
+
+    Inspired by cld-maindev/pricehawk — enterprise pricing-error monetization patterns:
+      * Price anchoring  : Shows ₹Deal vs MRP + discount % for instant value clarity
+      * Single outbound link : Only the Amazon affiliate URL (no secondary blog link)
+                              to avoid X's dual-link reach penalty (30-50% suppression)
+      * Max 2 hashtags   : X algorithm flags >2 hashtags as low-quality/spam
+      * Clean structure  : Scannable in <2 seconds on mobile
+
+    Output format:
+      🔥 Price Drop: {Product Name}
+
+      💥 Deal: ₹{price} (MRP: ₹{mrp} • {disc}% OFF)   ← shown only when data found
+      ⚡ Coupon: Apply {coupon}% at checkout             ← shown only when coupon found
+
+      🛒 Grab Deal: {amazon_affiliate_url}
+
+      #TechDeals #Ad
+    """
     asin = asins[0] if asins else ""
     url = f"https://www.amazon.in/dp/{asin}?tag={affiliate_tag}" if asin else ""
-    website_url = "https://techselect.blog"
 
-    # Customizable header prefix and hashtags via environment variables or high-converting defaults
-    style = os.getenv("LOOT_SALES_STYLE", "loot_sale").lower().strip()
-    
-    if style == "loot":
-        header_prefix = "🔥 INSANE LOOT ALERT 💥"
-        hashtags = "#Loot #LootDeal #TechDeals #TechSelect #Ad"
-        cta_label = "🛒 Grab Loot"
-    elif style == "sale":
-        header_prefix = "🛍️ BIGGEST SALE PRICE DROP ⚡"
-        hashtags = "#AmazonSale #FlashSale #TechDeals #TechSelect #Ad"
-        cta_label = "🛒 Buy Sale Price"
-    elif style == "loot_deal":
-        header_prefix = "🚨 MEGA LOOT DEAL DROP! 🔥"
-        hashtags = "#LootDeal #Loot #AmazonSale #TechDeals #Ad"
-        cta_label = "🛒 Grab Loot"
-    else:  # default 'loot_sale'
-        header_prefix = "🔥 MEGA LOOT SALE 💥"
-        hashtags = "#Loot #LootDeal #AmazonSale #TechDeals #Ad"
-        cta_label = "🛒 Grab Loot"
+    # Allow env-level style toggle: "pricehawk" (default) or "loot_sale" (legacy)
+    style = os.getenv("DEAL_FORMAT_STYLE", "pricehawk").lower().strip()
 
-    # Allow custom override from env
-    header_prefix = os.getenv("DEAL_HEADER_PREFIX", header_prefix).strip()
-    hashtags = os.getenv("DEAL_HASHTAGS", hashtags).strip()
+    if style == "loot_sale":
+        # ── Legacy Loot/Sale format (kept for backward compat via env toggle) ──
+        clean_text = clean_html_tags(text)
+        lines = [line.strip() for line in clean_text.split("\n") if line.strip()]
+        title = lines[0] if lines else "Hot Tech Deal Alert!"
 
-    # Budget calculation: X counts URLs as 23 chars.
-    # Header: ~25 chars + Amazon URL: 23 + Website URL: 23 + Hashtags: ~45 + Labels: ~35 = ~150 chars overhead
-    # Remaining title budget: ~130 chars (safe total <= 280)
-    max_title_len = 130
-    if len(title) > max_title_len:
-        title = title[: max_title_len - 3] + "..."
+        header_prefix = os.getenv("DEAL_HEADER_PREFIX", "🔥 MEGA LOOT SALE 💥").strip()
+        hashtags = os.getenv("DEAL_HASHTAGS", "#Loot #LootDeal #AmazonSale #TechDeals #Ad").strip()
+        cta_label = "🛒 Grab Loot"
+        website_url = "https://techselect.blog"
+
+        max_title_len = 130
+        if len(title) > max_title_len:
+            title = title[: max_title_len - 3] + "..."
+
+        if url:
+            return f"{header_prefix}\n⚡ {title}\n\n{cta_label}: {url}\n🌐 Live Sales: {website_url}\n\n{hashtags}"
+        else:
+            return f"{header_prefix}\n⚡ {title}\n\n🌐 Live Sales: {website_url}\n\n{hashtags}"
+
+    # ── PriceHawk format (default) ────────────────────────────────────────────
+    parsed = _pricehawk_extract(text)
+    product = parsed["product"]
+    deal_price = parsed["deal_price"]
+    mrp = parsed["mrp"]
+    discount_pct = parsed["discount_pct"]
+    coupon_pct = parsed["coupon_pct"]
+
+    # Allow env override of product name cap
+    max_product_len = int(os.getenv("DEAL_PRODUCT_MAX_LEN", "80"))
+    if len(product) > max_product_len:
+        product = product[: max_product_len - 3] + "..."
+
+    # Build price line (only if at least deal price is known)
+    price_line = ""
+    if deal_price and mrp and mrp != deal_price:
+        if discount_pct:
+            price_line = f"💥 Deal: ₹{deal_price} (MRP: ₹{mrp} • {discount_pct}% OFF)"
+        else:
+            price_line = f"💥 Deal: ₹{deal_price} (MRP: ₹{mrp})"
+    elif deal_price:
+        if discount_pct:
+            price_line = f"💥 Deal: ₹{deal_price} ({discount_pct}% OFF)"
+        else:
+            price_line = f"💥 Deal: ₹{deal_price}"
+    elif discount_pct:
+        price_line = f"💥 {discount_pct}% OFF"
+
+    # Build coupon line
+    coupon_line = f"⚡ Coupon: Apply {coupon_pct}% at checkout" if coupon_pct else ""
+
+    # Allow env override of hashtags (default: minimal, algorithm-safe)
+    hashtags = os.getenv("DEAL_HASHTAGS", "#TechDeals #Ad").strip()
+
+    # Assemble tweet — X counts each URL as 23 chars regardless of actual length
+    # Overhead budget: header(~22) + price(~45) + coupon(~35) + cta(~10) + URL(23) + hashtags(~15) ≈ 150
+    # Product name budget: ~100 chars → total safely under 280
+    body_parts = [f"🔥 Price Drop: {product}"]
+    if price_line:
+        body_parts.append(price_line)
+    if coupon_line:
+        body_parts.append(coupon_line)
+
+    body = "\n".join(body_parts)
 
     if url:
-        tweet = f"{header_prefix}\n⚡ {title}\n\n{cta_label}: {url}\n🌐 Live Sales: {website_url}\n\n{hashtags}"
+        tweet = f"{body}\n\n🛒 Grab Deal: {url}\n\n{hashtags}"
     else:
-        tweet = f"{header_prefix}\n⚡ {title}\n\n🌐 Live Sales: {website_url}\n\n{hashtags}"
+        tweet = f"{body}\n\n{hashtags}"
 
     return tweet
 
