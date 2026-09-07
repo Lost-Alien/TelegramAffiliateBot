@@ -401,6 +401,160 @@ def _xactions_post_tweet(auth_token: str, ct0: str, tweet_text: str) -> tuple[bo
 
 
 # ============================================================================
+# XActions Reply Engine (Two-Step PriceHawk Method)
+# Same endpoint as _xactions_post_tweet() — only the variables differ:
+#   reply.in_reply_to_tweet_id is set to parent tweet_id
+# Ref: XActions actions.js replyToTweet() — identical flow to postTweet()
+# ============================================================================
+
+def _xactions_reply_tweet(
+    auth_token: str,
+    ct0: str,
+    tweet_text: str,
+    reply_to_tweet_id: str,
+) -> tuple[bool, str]:
+    """Post a reply to an existing tweet via X's internal GraphQL API.
+
+    Implements XActions replyToTweet() — identical to postTweet() except:
+      variables.reply.in_reply_to_tweet_id = reply_to_tweet_id
+
+    This is the engine behind the PriceHawk two-step bypass:
+      Step 1: post link-free hook → get tweet_id
+      Step 2: reply to that tweet_id with the affiliate link
+
+    Returns:
+        (success: bool, reply_tweet_id_or_error: str)
+    """
+    query_id = _XACTIONS_CREATE_TWEET_QUERY_ID
+    url = f"https://x.com/i/api/graphql/{query_id}/CreateTweet"
+
+    headers = {
+        "Authorization": f"Bearer {urllib.parse.unquote(_XACTIONS_BEARER_TOKEN)}",
+        "x-csrf-token": ct0,
+        "x-twitter-auth-type": "OAuth2Session",
+        "x-twitter-active-user": "yes",
+        "x-twitter-client-language": "en",
+        "Cookie": f"auth_token={auth_token}; ct0={ct0};",
+        "Content-Type": "application/json",
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/131.0.0.0 Safari/537.36"
+        ),
+        "Accept": "*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Origin": "https://x.com",
+        # Referer points to the parent tweet for context — mirrors browser behaviour
+        "Referer": f"https://x.com/i/status/{reply_to_tweet_id}",
+    }
+
+    payload = {
+        "variables": {
+            "tweet_text": tweet_text,
+            "dark_request": False,
+            "media": {
+                "media_entities": [],
+                "possibly_sensitive": False,
+            },
+            "semantic_annotation_ids": [],
+            # ← This is the only difference from _xactions_post_tweet()
+            "reply": {
+                "in_reply_to_tweet_id": reply_to_tweet_id,
+                "exclude_reply_user_ids": [],
+            },
+        },
+        "features": _XACTIONS_DEFAULT_FEATURES,
+        "queryId": query_id,
+    }
+
+    body = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            resp_data = json.loads(resp.read().decode("utf-8"))
+
+        tweet_result = (
+            resp_data.get("data", {}).get("create_tweet", {}).get("tweet_results", {}).get("result")
+            or resp_data.get("data", {}).get("create_tweet", {}).get("tweet_result", {}).get("result")
+            or resp_data.get("data", {}).get("create_tweet")
+        )
+
+        if tweet_result:
+            reply_id = (
+                tweet_result.get("rest_id")
+                or tweet_result.get("legacy", {}).get("id_str")
+                or "OK"
+            )
+            return True, str(reply_id)
+
+        errors = resp_data.get("errors", [])
+        if errors:
+            return False, errors[0].get("message", "Unknown GraphQL error")
+
+        return True, "replied"
+
+    except urllib.error.HTTPError as e:
+        error_body = ""
+        try:
+            error_body = e.read().decode("utf-8")[:300]
+        except Exception:
+            pass
+        return False, f"HTTP {e.code}: {e.reason} — {error_body}"
+    except urllib.error.URLError as e:
+        return False, f"Network error: {e.reason}"
+    except Exception as e:
+        return False, f"Unexpected error: {e}"
+
+
+def _build_hook_tweet(parsed: dict, affiliate_tag: str) -> str:
+    """Build the link-free hook tweet for Step 1 of the PriceHawk two-step method.
+
+    This tweet contains NO external URLs so it gets 100% algorithm distribution.
+    The affiliate link is posted separately as a reply (Step 2).
+
+    Format:
+      {Product Name} just dropped!
+
+      💥 Deal: ₹{price} (MRP ₹{mrp} • {disc}% OFF)
+      ⚡ Apply {coupon}% coupon at checkout
+
+      👇 Amazon link in reply below
+    """
+    product = parsed.get("product", "Hot Tech Deal")
+    deal_price = parsed.get("deal_price", "")
+    mrp = parsed.get("mrp", "")
+    discount_pct = parsed.get("discount_pct", "")
+    coupon_pct = parsed.get("coupon_pct", "")
+
+    max_product_len = int(os.getenv("DEAL_PRODUCT_MAX_LEN", "80"))
+    if len(product) > max_product_len:
+        product = product[: max_product_len - 3] + "..."
+
+    parts = [f"{product} just dropped!"]
+
+    if deal_price and mrp and mrp != deal_price:
+        if discount_pct:
+            parts.append(f"💥 Deal: ₹{deal_price} (MRP ₹{mrp} • {discount_pct}% OFF)")
+        else:
+            parts.append(f"💥 Deal: ₹{deal_price} (MRP ₹{mrp})")
+    elif deal_price:
+        if discount_pct:
+            parts.append(f"💥 Deal: ₹{deal_price} ({discount_pct}% OFF)")
+        else:
+            parts.append(f"💥 Deal: ₹{deal_price}")
+    elif discount_pct:
+        parts.append(f"💥 {discount_pct}% OFF")
+
+    if coupon_pct:
+        parts.append(f"⚡ Apply {coupon_pct}% coupon at checkout")
+
+    parts.append("\n👇 Amazon link in reply below")
+
+    return "\n".join(parts)
+
+
+# ============================================================================
 # Public API
 # ============================================================================
 
@@ -410,33 +564,111 @@ async def push_deal_to_x(
     asins: list[str],
     affiliate_tag: str = "techstor0caaf-21",
 ) -> bool:
-    """Post deal to X (Twitter). Returns True on success, False on failure. Never raises.
+    """Post deal to X (Twitter) using PriceHawk two-step XActions method.
 
-    Posting priority:
+    Two-step flow (DEAL_POSTING_MODE=two_step, default):
+      Step 1 — XActions posts a link-free hook tweet → captures tweet_id
+      Step 2 — XActions immediately replies to that tweet_id with the affiliate link
+    This bypasses X's 30-50% external-link reach suppression on the main tweet.
+
+    Single-tweet fallback (DEAL_POSTING_MODE=single_tweet):
+      Posts the full PriceHawk card (link included) in one tweet.
+
+    Posting engine priority:
       1. XActions GraphQL (cookie auth — FREE, no 402 errors) ← PRIMARY
-      2. Tweepy Official API v2 (if cookies not configured) ← FALLBACK 1
-      3. posts.csv queue (if both above fail) ← FALLBACK 2
+      2. Tweepy Official API v2 (if cookies not configured)   ← FALLBACK 1
+      3. posts.csv queue (if both above fail)                 ← FALLBACK 2
+
+    Returns True on success, False on failure. Never raises.
     """
     if not asins:
         logger.debug("X post skipped: No ASINs provided.")
         return False
 
-    tweet_content = format_tweet_text(text, asins, affiliate_tag)
+    asin = asins[0]
+    affiliate_url = f"https://www.amazon.in/dp/{asin}?tag={affiliate_tag}"
+    posting_mode = os.getenv("DEAL_POSTING_MODE", "two_step").lower().strip()
+    hashtags = os.getenv("DEAL_HASHTAGS", "#TechDeals #Ad").strip()
 
     # ── PRIMARY: XActions GraphQL cookie engine ──────────────────────────────
     auth_token, ct0, xactions_enabled = _resolve_xactions_cookies()
 
     if xactions_enabled:
         logger.info("X poster: Using XActions GraphQL engine (cookie auth, no API fees).")
-        success, result = _xactions_post_tweet(auth_token, ct0, tweet_content)
-        if success:
-            logger.info(
-                "✅ XActions: Tweet posted to @techselect_blog — ID=%s ASINs=%s",
-                result, asins,
-            )
-            return True
+
+        if posting_mode == "two_step":
+            # ── STEP 1: Post link-free hook tweet ────────────────────────────
+            parsed = _pricehawk_extract(text)
+            hook_text = _build_hook_tweet(parsed, affiliate_tag)
+            logger.info("Two-step mode: posting hook tweet (no link)...")
+
+            hook_ok, hook_result = _xactions_post_tweet(auth_token, ct0, hook_text)
+
+            if hook_ok and hook_result not in ("posted", "OK", ""):
+                # ── STEP 2: Reply with the affiliate link ─────────────────────
+                import time as _time
+                _time.sleep(2)  # Brief pause so Step 1 is indexed before reply
+
+                reply_text = f"🛒 Amazon: {affiliate_url}\n\n{hashtags}"
+                logger.info(
+                    "Two-step mode: posting affiliate link as reply to tweet_id=%s",
+                    hook_result,
+                )
+                reply_ok, reply_result = _xactions_reply_tweet(
+                    auth_token, ct0, reply_text, hook_result
+                )
+
+                if reply_ok:
+                    logger.info(
+                        "✅ XActions two-step complete — Hook ID=%s Reply ID=%s ASINs=%s",
+                        hook_result, reply_result, asins,
+                    )
+                    return True
+                else:
+                    logger.warning(
+                        "⚠️  Hook posted (ID=%s) but reply failed: %s",
+                        hook_result, reply_result,
+                    )
+                    # Hook is live — still count as partial success
+                    return True
+            else:
+                if hook_ok:
+                    # hook_ok=True but no parseable tweet_id (e.g. "posted")
+                    # Post single-tweet with link as fallback
+                    logger.warning(
+                        "Two-step: hook posted but tweet_id not parseable (%s). "
+                        "Posting reply as standalone tweet.",
+                        hook_result,
+                    )
+                    single_text = format_tweet_text(text, asins, affiliate_tag)
+                    _xactions_post_tweet(auth_token, ct0, single_text)
+                    return True
+                else:
+                    logger.warning(
+                        "⚠️  XActions hook tweet failed: %s — falling back to single-tweet.",
+                        hook_result,
+                    )
+                    # Fall through to single-tweet attempt
+                    tweet_content = format_tweet_text(text, asins, affiliate_tag)
+                    ok, res = _xactions_post_tweet(auth_token, ct0, tweet_content)
+                    if ok:
+                        logger.info("✅ XActions single-tweet fallback posted — ID=%s", res)
+                        return True
+                    logger.warning("⚠️  XActions single-tweet also failed: %s", res)
+
         else:
-            logger.warning("⚠️  XActions post failed: %s — trying official API fallback.", result)
+            # ── Single-tweet mode (DEAL_POSTING_MODE=single_tweet) ───────────
+            tweet_content = format_tweet_text(text, asins, affiliate_tag)
+            success, result = _xactions_post_tweet(auth_token, ct0, tweet_content)
+            if success:
+                logger.info(
+                    "✅ XActions single-tweet posted — ID=%s ASINs=%s",
+                    result, asins,
+                )
+                return True
+            else:
+                logger.warning("⚠️  XActions post failed: %s — trying official API fallback.", result)
+
     else:
         logger.info(
             "XActions cookies not configured (TWITTER_AUTH_TOKEN/TWITTER_CT0 not set). "
@@ -457,6 +689,9 @@ async def push_deal_to_x(
                 access_token=at,
                 access_token_secret=ats,
             )
+            # Tweepy doesn't support two-step natively without reply_to logic;
+            # post single-tweet with link when falling back to official API.
+            tweet_content = format_tweet_text(text, asins, affiliate_tag)
             response = client.create_tweet(text=tweet_content)
             tweet_id = response.data.get("id") if response and response.data else "OK"
             logger.info("✅ Tweepy: Tweet posted — ID=%s ASINs=%s", tweet_id, asins)
@@ -474,9 +709,7 @@ async def push_deal_to_x(
         clean_t = clean_html_tags(text)
         lines_list = [line.strip() for line in clean_t.split("\n") if line.strip()]
         title = lines_list[0] if lines_list else "Hot Tech Deal"
-        asin = asins[0] if asins else ""
-        url = f"https://www.amazon.in/dp/{asin}?tag={affiliate_tag}" if asin else ""
-        hashtags = "#TechDeals #AmazonIndia #TechSelect #Ad"
+        url = affiliate_url
         queued = append_to_csv_queue(title=title, url=url, hashtags=hashtags)
         if queued:
             logger.info("📋 Fallback 2: Deal queued in posts.csv for later posting ✓")
