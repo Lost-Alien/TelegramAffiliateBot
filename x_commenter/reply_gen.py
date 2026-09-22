@@ -120,7 +120,7 @@ def _synthesize_techselect_text(
         res = exa.search(
             query=query,
             type=search_type,
-            num_results=3,
+            num_results=5,
             system_prompt=system_prompt,
             output_schema={
                 "type": "object",
@@ -187,9 +187,21 @@ def _synthesize_techselect_text(
                         trimmed = (trimmed + " " + s).strip()
                 reply_text = trimmed or reply_text[:MAX_CHAR_LIMIT]
 
-            # 4. Reject if raw URL slipped through
+            # 4. Strip any product/affiliate/raw URLs that slipped through
+            # (amzn.in, amazon.in, techselect.blog, t.co, bit.ly, etc.)
+            url_pattern = re.compile(
+                r'https?://\S+|www\.\S+|amzn\.\S+|bit\.ly/\S+|t\.co/\S+',
+                re.IGNORECASE
+            )
+            if url_pattern.search(reply_text):
+                reply_text = url_pattern.sub('', reply_text).strip()
+                # Clean up any double spaces left behind
+                reply_text = re.sub(r' {2,}', ' ', reply_text).strip()
+                logger.warning("Stripped product/affiliate URL from generated reply text.")
+
+            # 5. Final safety: if a raw http link STILL remains after stripping, reject
             if "http://" in reply_text or "https://" in reply_text:
-                logger.warning("Text contained raw link — rejecting for compliance safety.")
+                logger.warning("Text still contained raw link after strip — rejecting for safety.")
                 return None
 
             # 5. Check for numbers (Rs / ₹ / digits)

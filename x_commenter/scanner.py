@@ -23,6 +23,7 @@ import logging
 import random
 import re
 import time
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from exa_py import Exa
@@ -102,11 +103,13 @@ def scan_account_tweets(limit: int) -> List[Dict[str, Any]]:
 
         try:
             logger.info(f"Exa account-batch query for: {batch}")
+            cutoff = (datetime.now(timezone.utc) - timedelta(hours=48)).strftime("%Y-%m-%dT%H:%M:%SZ")
             results = exa.search(
                 query=query,
                 type="auto",
                 num_results=6,
                 include_domains=["twitter.com", "x.com"],
+                start_published_date=cutoff,
                 contents={"highlights": True},
             )
 
@@ -188,11 +191,13 @@ def scan_topic_tweets(limit: int) -> List[Dict[str, Any]]:
         query = f"{topic} India review price specs discussion"
         try:
             logger.info(f"Exa topic-fallback query: {query}")
+            cutoff = (datetime.now(timezone.utc) - timedelta(hours=48)).strftime("%Y-%m-%dT%H:%M:%SZ")
             results = exa.search(
                 query=query,
                 type="auto",
                 num_results=3,
                 include_domains=["twitter.com", "x.com"],
+                start_published_date=cutoff,
                 contents={"highlights": True},
             )
 
