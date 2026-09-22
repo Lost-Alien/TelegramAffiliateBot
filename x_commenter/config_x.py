@@ -63,7 +63,7 @@ ALWAYS_POST_STANDALONE = os.getenv("ALWAYS_POST_STANDALONE", "true").lower() in 
 # ==========================================
 # Caps replies to any single account per day so engagement is spread across
 # the whole TARGET_TECH_ACCOUNTS list instead of hammering one account.
-MAX_REPLIES_PER_ACCOUNT_PER_DAY = int(os.getenv("MAX_REPLIES_PER_ACCOUNT_PER_DAY", "2"))
+MAX_REPLIES_PER_ACCOUNT_PER_DAY = int(os.getenv("MAX_REPLIES_PER_ACCOUNT_PER_DAY", "4"))
 
 # How many target accounts get packed into a single Exa search query.
 # Keeps Exa credit usage low: N accounts get scanned in ceil(N / batch) calls

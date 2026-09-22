@@ -28,7 +28,7 @@ Write ONE reply to the tweet below. Length is variable: use 1 sentence for sharp
 
 CORE RULES:
 1. No emojis. None. Not even a single one.
-2. No hashtags. No URLs. No links.
+2. No hashtags. ABSOLUTELY NO URLs. No links. No product links. No Amazon links. No affiliate links. No shortened links. No "check link in bio". Nothing.
 3. No em dashes (the — character). Use a comma, colon, or full stop instead.
 4. Never sycophantic. No "Great post!", "Interesting!", "Thanks for sharing".
 5. Every reply must do exactly ONE of the following:
@@ -53,7 +53,7 @@ Write ONE standalone market commentary post. This appears on your own timeline a
 
 CORE RULES:
 1. No emojis. None. Not even a single one.
-2. No hashtags. No URLs. No links.
+2. No hashtags. ABSOLUTELY NO URLs. No links. No product links. No Amazon links. No affiliate links. No shortened links. Nothing.
 3. No em dashes (the — character). Use a comma, colon, or full stop instead.
 4. Never acknowledge "this tweet" or "the post above". Write as if you are starting the conversation yourself.
 5. Every post must do exactly ONE of the following:
@@ -187,15 +187,24 @@ def _synthesize_techselect_text(
                         trimmed = (trimmed + " " + s).strip()
                 reply_text = trimmed or reply_text[:MAX_CHAR_LIMIT]
 
-            # 4. Strip any product/affiliate/raw URLs that slipped through
-            # (amzn.in, amazon.in, techselect.blog, t.co, bit.ly, etc.)
+            # 4. Strip any product/affiliate/raw URLs that slipped through.
+            # Covers: http/https links, www., amzn.in/amazon.in dp/ ASIN paths,
+            # bit.ly, t.co, goo.gl, linktree, and any other common shortlinks.
             url_pattern = re.compile(
-                r'https?://\S+|www\.\S+|amzn\.\S+|bit\.ly/\S+|t\.co/\S+',
+                r'https?://\S+'
+                r'|www\.\S+'
+                r'|amzn\.\S+'
+                r'|amazon\.\S+/dp/\S+'
+                r'|flipkart\.com/\S+'
+                r'|bit\.ly/\S+'
+                r'|t\.co/\S+'
+                r'|goo\.gl/\S+'
+                r'|rb\.gy/\S+'
+                r'|linktr\.ee/\S+',
                 re.IGNORECASE
             )
             if url_pattern.search(reply_text):
                 reply_text = url_pattern.sub('', reply_text).strip()
-                # Clean up any double spaces left behind
                 reply_text = re.sub(r' {2,}', ' ', reply_text).strip()
                 logger.warning("Stripped product/affiliate URL from generated reply text.")
 
