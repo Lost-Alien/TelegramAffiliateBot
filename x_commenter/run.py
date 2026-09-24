@@ -100,11 +100,12 @@ def run_session() -> int:
     # Standalone market commentary — used when scanner finds no tweet URLs to reply to
     # OR when we're in forced-standalone mode (daily cap hit but ALWAYS_POST_STANDALONE on).
     standalone_topics = [
-        ("Indian Tech Value Comparison", "Latest smartphone deals India: RTX laptop pricing, iPhone effective price after exchange, OnePlus vs Samsung comparison."),
-        ("Budget Smartphone India 2024", "Best phones under 30000 in India, camera rankings, battery life, 5G coverage, and real street pricing."),
-        ("Gaming Laptop India Benchmark", "Gaming laptops under 1 lakh India: sustained TGP, thermals, HDFC/ICICI card discounts, value picks."),
-        ("MacBook vs Windows Laptop India", "MacBook Air M3 vs Windows ultrabooks in India — student pricing, battery life, app compatibility tradeoffs."),
-        ("Flagship Phone India Street Price", "Galaxy S24 vs iQOO 13 vs OnePlus 12 — effective prices after bank card cashback, exchange, EMI in India."),
+        ("Indian Chipset Benchmark Analysis", "Dimensity 9300 vs Snapdragon 8 Gen 3 sustained performance in India flagship phones: real thermal throttle data, AnTuTu sustained vs peak, and which holds up after 20 minutes of gaming."),
+        ("Budget 5G India 2024 Camera Real-World", "Phones under 25000 in India: 108MP marketing vs actual DxO-style scores, pixel binning quality, night mode noise floor — what the spec sheet hides."),
+        ("Gaming Laptop India Thermals 2024", "Sub-1-lakh gaming laptops India: sustained GPU TGP after 30 min load, throttle percentage, and which BIOS modes actually matter for competitive titles."),
+        ("MacBook Air M3 Battery vs Windows", "MacBook Air M3 vs Asus Zenbook 14 OLED in real Indian usage: idle drain at 200 nits, video playback longevity, and whether the premium holds for engineering students."),
+        ("Display Panel India Value Tier", "AMOLED vs IPS at Rs 20,000 segment India: peak brightness, PWM frequency, colour accuracy delta-E, and whether the surcharge is justified for outdoor use in Indian summers."),
+        ("Telecom Hike Impact on Data Cost India", "Post-Jio/Airtel hike effective data cost per GB vs 2022 baseline, how it changes the value equation for Wi-Fi-only tablets vs SIM-enabled smartphones for remote work."),
     ]
     if not candidates or force_standalone:
         import random as _random

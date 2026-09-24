@@ -2,8 +2,8 @@ name: X Auto Commenter (TechSelect)
 
 on:
   schedule:
-    # Run every hour at minute 0 (24x daily, 10 replies per hour)
-    - cron: '0 * * * *'
+    # Run once daily at 10:00 IST (04:30 UTC) — 1 tech post per day max
+    - cron: '30 4 * * *'
 
   workflow_dispatch:
     inputs:
@@ -50,9 +50,9 @@ jobs:
           UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
           UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
-          MAX_REPLIES_PER_RUN: '2'
-          MAX_REPLIES_PER_DAY: '6'
-          MIN_DELAY_BETWEEN_REPLIES_SEC: '30'
+          MAX_REPLIES_PER_RUN: '1'
+          MAX_REPLIES_PER_DAY: '1'
+          MIN_DELAY_BETWEEN_REPLIES_SEC: '60'
         run: |
           python -m x_commenter.run
 
