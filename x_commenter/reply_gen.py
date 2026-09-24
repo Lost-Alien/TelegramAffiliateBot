@@ -1,13 +1,23 @@
 """
 reply_gen.py — Synthesizes authoritative TechSelect India replies and quote-repost
-commentary using Exa AI, with structured output schema and Indian tech hardware
-review persona.
+commentary using Exa AI structured search, with Indian tech hardware review persona.
+
+Exa usage pattern (correct):
+  exa.search(query, system_prompt=..., output_schema=..., contents={"highlights": True})
+  → res.output.content  (dict matching output_schema)
+
+The query is crafted to pull FACTUAL DATA about the topic from authoritative tech
+sources (91mobiles, GSMArena, The Verge, AnandTech, etc.) — NOT from Twitter.
+This gives Exa's synthesis layer real specs, prices, and benchmarks to ground the
+reply in, producing hard-number-rich replies instead of generic takes.
 """
 
 import logging
 import re
 from typing import Optional, Dict, Any
+
 from exa_py import Exa
+
 from x_commenter.config_x import EXA_API_KEY, MAX_CHAR_LIMIT
 
 logger = logging.getLogger("x_commenter.reply_gen")
@@ -22,7 +32,25 @@ def get_exa_client() -> Exa:
     return _exa_client
 
 
-TECHSELECT_SYSTEM_PROMPT = """
+# Authoritative Indian + global tech sources Exa searches for grounding facts.
+# Intentionally excludes twitter.com/x.com — we want spec sheets, price data,
+# and benchmarks, not more social posts.
+EXA_TECH_FACT_DOMAINS = [
+    "91mobiles.com",
+    "gadgets360.com",
+    "gsmarena.com",
+    "ndtvgadgets.com",
+    "anandtech.com",
+    "theverge.com",
+    "androidauthority.com",
+    "notebookcheck.net",
+    "techradar.com",
+    "bgr.in",
+    "digit.in",
+]
+
+
+TECHSELECT_SYSTEM_PROMPT = """\
 You are @techselect_blog, the editorial voice of TechSelect India — an independent consumer tech and hardware review publication.
 Write ONE reply to the tweet below. Length is variable: use 1 sentence for sharp takes, 2-3 sentences for data breakdowns, up to 4 sentences if the topic demands proper context. Stay under 260 characters total.
 
@@ -47,7 +75,7 @@ TONE GUIDE:
 - Reads naturally on a phone screen. Short words. No jargon without context.
 """
 
-TECHSELECT_QUOTE_SYSTEM_PROMPT = """
+TECHSELECT_QUOTE_SYSTEM_PROMPT = """\
 You are @techselect_blog, the editorial voice of TechSelect India — an independent consumer tech and hardware review publication.
 Write ONE standalone market commentary post. This appears on your own timeline as a fresh opinion with the original tweet embedded below. Length is variable: 1 sentence for sharp verdicts, 2-3 for data analysis, up to 4 if context is essential. Stay under 260 characters.
 
@@ -73,9 +101,57 @@ TONE GUIDE:
 
 # Per-session virality score cache.
 # Exa LLM scores each reply (1-10). If a prior candidate scored >= 7,
-# the next call upgrades to type="deep" for richer synthesis.
+# the next synthesis call upgrades to type="deep" for richer context.
 # Defaults to 5 (neutral) so the first call always uses type="auto".
 _last_virality_score: int = 5
+
+# Simplified output schema — stays well within Exa's 10-property / 2-nesting limit.
+_OUTPUT_SCHEMA = {
+    "type": "object",
+    "required": ["reply", "contains_number", "virality_score"],
+    "properties": {
+        "reply": {
+            "type": "string",
+            "description": (
+                "Short Twitter reply under 260 chars. Must be grounded in a real Indian "
+                "Rupee price or a technical spec (mAh, nits, W, GB, GHz, benchmark score). "
+                "No URLs, no hashtags, no emojis."
+            ),
+        },
+        "contains_number": {
+            "type": "boolean",
+            "description": "True if the reply contains an Indian Rupee price (Rs/₹) or a numeric spec.",
+        },
+        "virality_score": {
+            "type": "integer",
+            "description": (
+                "Score 1-10: how likely this reply is to earn genuine engagement. "
+                "10 = shocking price data, forced choice, or spec comparison. "
+                "1 = generic commentary with no debate potential."
+            ),
+        },
+    },
+}
+
+
+def _build_fact_query(topic: str, tweet_text: str) -> str:
+    """
+    Build an Exa query that searches for factual data ABOUT the topic
+    from authoritative tech sources — specs, prices, benchmarks, comparisons.
+    This is intentionally separate from the tweet text itself: we want
+    Exa to retrieve real-world grounding data, not social commentary.
+    """
+    # Extract the most informative 120 chars of the tweet for topic context
+    tweet_snippet = tweet_text[:120].strip()
+    if topic:
+        return (
+            f"{topic} India specs price benchmark review 2024 "
+            f"| {tweet_snippet}"
+        )
+    return (
+        f"India consumer tech specs price benchmark comparison 2024 "
+        f"| {tweet_snippet}"
+    )
 
 
 def _synthesize_techselect_text(
@@ -86,171 +162,163 @@ def _synthesize_techselect_text(
     author: str = "",
 ) -> Optional[Dict[str, Any]]:
     """
-    Shared Exa synthesis + safety guardrails used by both reply and
-    quote-repost generation.
+    Exa-powered synthesis for both reply and quote-repost generation.
 
-    Credit-efficiency logic (Exa LLM as the scorer, no external model needed):
-    - The output_schema asks Exa to return virality_score (1-10) and sentiment
-      alongside the reply, using its own LLM judgment.
-    - The previous call's virality_score determines this call's search_type:
-        score >= 7  (high engagement potential)  -> type="deep"
-        score < 7   (standard/generic content)   -> type="auto" (cheaper)
-    - First call always uses type="auto" (default score = 5).
-    - Aggregates ALL result highlights as synthesis context.
+    Exa searches authoritative tech news/review sites (NOT Twitter) for
+    factual grounding data — specs, prices, benchmarks — then synthesises
+    a reply using the system_prompt persona and the structured output_schema.
 
-    Returns a dict with 'reply', 'contains_number', 'virality_score', 'sentiment'.
+    Credit-efficiency:
+      - Last call's virality_score gates search_type: >=7 -> "deep", else "auto"
+      - First call always uses "auto" (default score = 5)
     """
     global _last_virality_score
     exa = get_exa_client()
 
-    # Route based on previous call's Exa-predicted virality
     search_type = "deep" if _last_virality_score >= 7 else "auto"
     logger.info(
         f"Exa virality score from last call: {_last_virality_score}/10 "
         f"-> using type='{search_type}' for {query_label}"
     )
 
-    query = (
-        f"TechSelect India hardware review {query_label} on "
-        f"{topic or 'consumer tech'}: \"{tweet_text[:250]}\""
-    )
+    # Query targets factual tech data sources, NOT Twitter
+    query = _build_fact_query(topic, tweet_text)
 
     try:
-        logger.info(f"Synthesizing {query_label} via Exa for: {tweet_text[:60]}...")
+        logger.info(f"Exa synthesis ({query_label}) query: {query[:80]}...")
         res = exa.search(
             query=query,
             type=search_type,
             num_results=5,
+            include_domains=EXA_TECH_FACT_DOMAINS,
             system_prompt=system_prompt,
-            output_schema={
-                "type": "object",
-                "required": ["reply", "contains_number", "virality_score", "sentiment"],
-                "properties": {
-                    "reply": {
-                        "type": "string",
-                        "description": "Short Twitter reply under 260 chars grounded in Indian pricing or hardware spec"
-                    },
-                    "contains_number": {
-                        "type": "boolean",
-                        "description": "True if the reply contains an Indian Rupee price or a technical spec number"
-                    },
-                    "virality_score": {
-                        "type": "integer",
-                        "description": (
-                            "Score from 1 to 10 predicting how likely this tweet is to generate replies and engagement. "
-                            "10 = highly controversial, emotional, or contains shocking price data. "
-                            "1 = generic announcement with no debate potential. "
-                            "Consider: sarcasm, frustration, price shock, spec comparison, telecom controversy, "
-                            "forced choice questions."
-                        )
-                    },
-                    "sentiment": {
-                        "type": "string",
-                        "enum": ["frustrated", "excited", "curious", "neutral", "sarcastic", "outraged"],
-                        "description": "Dominant sentiment of the original tweet being replied to"
-                    }
-                }
-            },
-            contents={"highlights": True}
+            output_schema=_OUTPUT_SCHEMA,
+            contents={"highlights": True},
         )
 
-        # Aggregate all highlights from every returned result as extra context
-        # (used implicitly by Exa's synthesis layer; also logged for debugging)
+        # Log how many evidence highlights Exa used for grounding
         all_highlights: list[str] = []
         for item in getattr(res, "results", []):
             hl = getattr(item, "highlights", [])
             if hl:
                 all_highlights.extend(hl)
         if all_highlights:
-            logger.debug(f"Exa returned {len(all_highlights)} highlight(s) as synthesis context.")
+            logger.debug(
+                f"Exa returned {len(all_highlights)} highlight(s) as synthesis context."
+            )
+        else:
+            logger.warning(
+                "Exa returned 0 highlights — reply may lack grounding data."
+            )
 
         output = getattr(res, "output", None)
-        if output and hasattr(output, "content") and output.content:
-            content = output.content
-            reply_text = content.get("reply", "").strip()
+        if not output or not getattr(output, "content", None):
+            logger.warning(f"Exa returned no structured output for {query_label}.")
+            return None
 
-            # Safety Guardrails:
-            # 1. Strip em dashes — replace with comma for readability
-            reply_text = reply_text.replace("\u2014", ",")
+        content = output.content
+        reply_text = content.get("reply", "").strip()
 
-            # 2. Clean quotes if wrapped
-            if reply_text.startswith('"') and reply_text.endswith('"'):
-                reply_text = reply_text[1:-1].strip()
+        if not reply_text:
+            logger.warning("Exa output.content had empty 'reply' field.")
+            return None
 
-            # 3. Check length — trim cleanly to last complete sentence
-            if len(reply_text) > MAX_CHAR_LIMIT:
-                logger.warning(f"Generated text exceeds limit ({len(reply_text)} > {MAX_CHAR_LIMIT}). Trimming.")
-                sentences = re.split(r'(?<=[.!?])\s+', reply_text)
-                trimmed = ""
-                for s in sentences:
-                    if len((trimmed + " " + s).strip()) <= MAX_CHAR_LIMIT:
-                        trimmed = (trimmed + " " + s).strip()
-                reply_text = trimmed or reply_text[:MAX_CHAR_LIMIT]
+        # ── Safety Guardrails ─────────────────────────────────────────────
 
-            # 4. Strip any product/affiliate/raw URLs that slipped through.
-            # Covers: http/https links, www., amzn.in/amazon.in dp/ ASIN paths,
-            # bit.ly, t.co, goo.gl, linktree, and any other common shortlinks.
-            url_pattern = re.compile(
-                r'https?://\S+'
-                r'|www\.\S+'
-                r'|amzn\.\S+'
-                r'|amazon\.\S+/dp/\S+'
-                r'|flipkart\.com/\S+'
-                r'|bit\.ly/\S+'
-                r'|t\.co/\S+'
-                r'|goo\.gl/\S+'
-                r'|rb\.gy/\S+'
-                r'|linktr\.ee/\S+',
-                re.IGNORECASE
+        # 1. Strip em dashes → comma
+        reply_text = reply_text.replace("\u2014", ",").replace("\u2013", ",")
+
+        # 2. Unwrap surrounding quotes
+        if reply_text.startswith('"') and reply_text.endswith('"'):
+            reply_text = reply_text[1:-1].strip()
+
+        # 3. Trim to last complete sentence if over char limit
+        if len(reply_text) > MAX_CHAR_LIMIT:
+            logger.warning(
+                f"Generated text exceeds limit ({len(reply_text)} > {MAX_CHAR_LIMIT}). Trimming."
             )
-            if url_pattern.search(reply_text):
-                reply_text = url_pattern.sub('', reply_text).strip()
-                reply_text = re.sub(r' {2,}', ' ', reply_text).strip()
-                logger.warning("Stripped product/affiliate URL from generated reply text.")
+            sentences = re.split(r'(?<=[.!?])\s+', reply_text)
+            trimmed = ""
+            for s in sentences:
+                candidate = (trimmed + " " + s).strip()
+                if len(candidate) <= MAX_CHAR_LIMIT:
+                    trimmed = candidate
+            reply_text = trimmed or reply_text[:MAX_CHAR_LIMIT]
 
-            # 5. Final safety: if a raw http link STILL remains after stripping, reject
-            if "http://" in reply_text or "https://" in reply_text:
-                logger.warning("Text still contained raw link after strip — rejecting for safety.")
-                return None
+        # 4. Strip any URL that slipped through (http, www, amzn, t.co, etc.)
+        url_pattern = re.compile(
+            r'https?://\S+'
+            r'|www\.\S+'
+            r'|amzn\.\S+'
+            r'|amazon\.\S+/dp/\S+'
+            r'|flipkart\.com/\S+'
+            r'|bit\.ly/\S+'
+            r'|t\.co/\S+'
+            r'|goo\.gl/\S+'
+            r'|rb\.gy/\S+'
+            r'|linktr\.ee/\S+',
+            re.IGNORECASE,
+        )
+        if url_pattern.search(reply_text):
+            reply_text = url_pattern.sub("", reply_text).strip()
+            reply_text = re.sub(r" {2,}", " ", reply_text).strip()
+            logger.warning("Stripped URL from generated reply text.")
 
-            # 5. Check for numbers (Rs / ₹ / digits)
-            has_digit = bool(re.search(r'\d+', reply_text)) or "₹" in reply_text or "Rs" in reply_text
-            content["reply"] = reply_text
-            content["contains_number"] = has_digit
+        # 5. Hard reject if any raw link survives
+        if "http://" in reply_text or "https://" in reply_text:
+            logger.warning("Reply still contained a raw link after strip — rejecting.")
+            return None
 
-            # 6. Cache Exa LLM virality score for next call routing
-            _last_virality_score = int(content.get("virality_score", 5))
-            sentiment_label = content.get("sentiment", "neutral")
-            logger.info(
-                f"Exa LLM scored this candidate: virality={_last_virality_score}/10, "
-                f"sentiment={sentiment_label}"
-            )
+        # 6. Verify number presence (Rs, ₹, or any digit)
+        has_digit = (
+            bool(re.search(r"\d+", reply_text))
+            or "₹" in reply_text
+            or "Rs" in reply_text
+        )
 
-            return content
+        # Update content with cleaned values
+        content["reply"] = reply_text
+        content["contains_number"] = has_digit
+
+        # 7. Cache virality score for next call routing
+        _last_virality_score = max(1, min(10, int(content.get("virality_score", 5))))
+        logger.info(
+            f"Exa synthesis done: virality={_last_virality_score}/10, "
+            f"has_number={has_digit}, len={len(reply_text)}"
+        )
+        logger.info(f"Generated text:\n'{reply_text}'")
+
+        return content
 
     except Exception as exc:
-        logger.error(f"Exa {query_label} synthesis failed: {exc}")
+        logger.error(f"Exa {query_label} synthesis failed: {exc}", exc_info=True)
 
     return None
 
 
-def generate_techselect_reply(tweet_text: str, topic: str = "", author: str = "") -> Optional[Dict[str, Any]]:
+def generate_techselect_reply(
+    tweet_text: str, topic: str = "", author: str = ""
+) -> Optional[Dict[str, Any]]:
     """
-    Generate an authoritative reply using Exa AI structured synthesis.
-    Automatically routes to deep or auto Exa search based on sentiment score.
-    Returns a dict with 'reply' and 'contains_number'.
+    Generate an authoritative reply grounded in real tech facts via Exa AI.
+    Returns dict with 'reply', 'contains_number', 'virality_score'.
     """
     return _synthesize_techselect_text(
         TECHSELECT_SYSTEM_PROMPT, "reply to tweet", tweet_text, topic, author
     )
 
 
-def generate_quote_commentary(tweet_text: str, topic: str = "", author: str = "") -> Optional[Dict[str, Any]]:
+def generate_quote_commentary(
+    tweet_text: str, topic: str = "", author: str = ""
+) -> Optional[Dict[str, Any]]:
     """
-    Generate standalone quote-tweet commentary using Exa AI structured synthesis.
-    Automatically routes to deep or auto Exa search based on sentiment score.
-    Returns a dict with 'reply' and 'contains_number'.
+    Generate standalone quote-tweet commentary grounded in real tech facts via Exa AI.
+    Returns dict with 'reply', 'contains_number', 'virality_score'.
     """
     return _synthesize_techselect_text(
-        TECHSELECT_QUOTE_SYSTEM_PROMPT, "quote-repost commentary", tweet_text, topic, author
+        TECHSELECT_QUOTE_SYSTEM_PROMPT,
+        "quote-repost commentary",
+        tweet_text,
+        topic,
+        author,
     )
