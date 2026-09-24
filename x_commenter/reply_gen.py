@@ -189,7 +189,7 @@ def _synthesize_techselect_text(
         res = exa.search(
             query=query,
             type=search_type,
-            num_results=5,
+            num_results=3,              # 3 authoritative articles = enough grounding for 260 chars
             include_domains=EXA_TECH_FACT_DOMAINS,
             system_prompt=system_prompt,
             output_schema=_OUTPUT_SCHEMA,

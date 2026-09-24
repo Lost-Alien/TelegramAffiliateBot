@@ -156,11 +156,11 @@ def scan_account_tweets(limit: int) -> List[Dict[str, Any]]:
     cutoff = _cutoff_timestamp()
 
     for batch in _batch(accounts, ACCOUNT_QUERY_BATCH_SIZE):
-        if len(candidates) >= limit * 2:
+        if len(candidates) >= limit:
             break
 
-        # Clean query: name the accounts naturally; domain filter does the restriction.
-        # Avoids the "site:x.com/handle OR ..." noise that confused Exa's neural ranker.
+        # Clean natural-language query — include_domains restricts to Twitter/X,
+        # so no need to embed "site:x.com/handle" noise in the query string.
         account_names = " OR ".join(batch)
         query = f"tech launch review specs India from {account_names}"
 
@@ -169,7 +169,7 @@ def scan_account_tweets(limit: int) -> List[Dict[str, Any]]:
             results = exa.search(
                 query=query,
                 type="auto",
-                num_results=6,
+                num_results=3,          # 3 is enough; we only need 1 candidate
                 include_domains=_TWITTER_DOMAINS,
                 start_published_date=cutoff,
                 contents={"highlights": True},
@@ -177,6 +177,14 @@ def scan_account_tweets(limit: int) -> List[Dict[str, Any]]:
             new = _parse_exa_results(results, seen_ids)
             candidates.extend(new)
             logger.debug(f"Batch {batch} yielded {len(new)} candidates.")
+
+            # Early-exit: found at least one usable tweet, no need to burn more credits
+            if candidates:
+                logger.info(
+                    f"Found {len(candidates)} candidate(s) in first successful batch. "
+                    "Skipping remaining batches to save Exa credits."
+                )
+                break
 
         except Exception as exc:
             logger.debug(f"Exa PRIMARY scan notice for {batch}: {exc}")
@@ -233,7 +241,7 @@ def scan_topic_tweets(limit: int) -> List[Dict[str, Any]]:
     cutoff = _cutoff_timestamp()
 
     for topic in EXA_SEARCH_TOPICS:
-        if len(candidates) >= limit * 2:
+        if len(candidates) >= limit:
             break
 
         query = f"{topic} India review price specs discussion"
@@ -242,13 +250,16 @@ def scan_topic_tweets(limit: int) -> List[Dict[str, Any]]:
             results = exa.search(
                 query=query,
                 type="auto",
-                num_results=3,
+                num_results=2,          # minimal — we only need 1 reply target
                 include_domains=_TWITTER_DOMAINS,
                 start_published_date=cutoff,
                 contents={"highlights": True},
             )
             new = _parse_exa_results(results, seen_ids)
             candidates.extend(new)
+            if candidates:
+                logger.info("TERTIARY found candidates. Stopping topic loop.")
+                break
 
         except Exception as exc:
             logger.debug(f"Exa TERTIARY notice for topic '{topic}': {exc}")

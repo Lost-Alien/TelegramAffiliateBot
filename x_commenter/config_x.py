@@ -61,14 +61,14 @@ ALWAYS_POST_STANDALONE = os.getenv("ALWAYS_POST_STANDALONE", "true").lower() in 
 # ==========================================
 # Multi-Account Engagement Controls
 # ==========================================
-# Caps replies to any single account per day so engagement is spread across
-# the whole TARGET_TECH_ACCOUNTS list instead of hammering one account.
-MAX_REPLIES_PER_ACCOUNT_PER_DAY = int(os.getenv("MAX_REPLIES_PER_ACCOUNT_PER_DAY", "4"))
+# 1 post/day overall so 1 reply per account per day is the correct cap.
+MAX_REPLIES_PER_ACCOUNT_PER_DAY = int(os.getenv("MAX_REPLIES_PER_ACCOUNT_PER_DAY", "1"))
 
-# How many target accounts get packed into a single Exa search query.
-# Keeps Exa credit usage low: N accounts get scanned in ceil(N / batch) calls
-# instead of N separate calls.
-ACCOUNT_QUERY_BATCH_SIZE = int(os.getenv("ACCOUNT_QUERY_BATCH_SIZE", "4"))
+# Pack 10 accounts per Exa batch query:
+# 40 accounts / 10 = 4 batch calls (worst case) vs old 10 calls.
+# Exa neural search handles multi-account queries cleanly — bigger batches
+# do not degrade result quality for twitter.com domain-restricted searches.
+ACCOUNT_QUERY_BATCH_SIZE = int(os.getenv("ACCOUNT_QUERY_BATCH_SIZE", "10"))
 
 # Free, credit-less fallback (authenticated twikit session, no Exa cost) used
 # only when Exa search errors out or returns zero usable candidates.
