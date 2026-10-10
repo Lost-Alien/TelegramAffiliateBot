@@ -581,6 +581,11 @@ async def push_deal_to_x(
 
     Returns True on success, False on failure. Never raises.
     """
+    enable_deals = os.getenv("ENABLE_DEAL_X_POSTING", "false").lower().strip() in ("true", "1", "yes")
+    if not enable_deals:
+        logger.info("Deal posting to X is stopped. Only EXA API replies are active.")
+        return False
+
     if not asins:
         logger.debug("X post skipped: No ASINs provided.")
         return False

@@ -78,22 +78,27 @@ def _init_local_db():
 _init_local_db()
 
 
+_UPSTASH_OFFLINE = False
+
+
 def _redis_command(*args) -> any:
     """Execute a REST command against Upstash Redis."""
-    if not UPSTASH_REDIS_REST_URL or not UPSTASH_REDIS_REST_TOKEN:
+    global _UPSTASH_OFFLINE
+    if _UPSTASH_OFFLINE or not UPSTASH_REDIS_REST_URL or not UPSTASH_REDIS_REST_TOKEN:
         return None
 
     path = "/".join(str(arg) for arg in args)
     headers = {"Authorization": f"Bearer {UPSTASH_REDIS_REST_TOKEN}"}
 
     try:
-        with httpx.Client(timeout=4.0) as client:
+        with httpx.Client(timeout=2.0) as client:
             resp = client.get(f"{UPSTASH_REDIS_REST_URL}/{path}", headers=headers)
             if resp.status_code == 200:
                 data = resp.json()
                 return data.get("result")
     except Exception as exc:
-        logger.warning(f"Upstash Redis request failed ({args[0]}): {exc}")
+        _UPSTASH_OFFLINE = True
+        logger.warning(f"Upstash Redis request failed ({args[0]}), switching to local SQLite store: {exc}")
     return None
 
 

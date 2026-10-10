@@ -209,6 +209,10 @@ def is_fake(url: str) -> bool:
 
 
 def main():
+    if os.getenv("ENABLE_DEAL_X_POSTING", "false").lower().strip() not in ("true", "1", "yes"):
+        print("Deal posting to X is stopped. Only EXA API replies are active.")
+        sys.exit(0)
+
     if not AUTH_TOKEN or not CT0:
         print("❌ ERROR: Missing X (Twitter) authentication tokens!")
         print("   Please set TWITTER_AUTH_TOKEN and TWITTER_CT0 in environment or .env file.")
