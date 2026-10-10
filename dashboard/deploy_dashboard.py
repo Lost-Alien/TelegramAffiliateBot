@@ -116,8 +116,10 @@ def update_env_var(env_path: Path, key: str, value: str) -> bool:
 def run_cmd(cmd: list[str], timeout: int = 30) -> tuple[bool, str]:
     """Run a shell command, return (success, output)."""
     try:
+        env = dict(os.environ)
+        env["GIT_TERMINAL_PROMPT"] = "0"
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout
+            cmd, capture_output=True, text=True, timeout=timeout, env=env
         )
         output = result.stdout + result.stderr
         return result.returncode == 0, output.strip()
@@ -147,40 +149,40 @@ def deploy_cookies(auth_token: str, ct0: str) -> list[dict]:
         scp_cmd = [
             "scp", "-i", ssh_key,
             "-o", "StrictHostKeyChecking=no",
-            "-o", "ConnectTimeout=10",
+            "-o", "ConnectTimeout=15",
             str(ENV_FILE),
             f"{EC2_HOST}:{EC2_REMOTE_ENV}",
         ]
-        ok, out = run_cmd(scp_cmd, timeout=20)
-        steps.append({"name": "SCP .env → EC2", "ok": ok, "detail": out or "Done"})
+        ok, out = run_cmd(scp_cmd, timeout=60)
+        steps.append({"name": "SCP .env -> EC2", "ok": ok, "detail": out or "Done"})
 
         # Step 2b: SCP x_poster.py to EC2 (XActions engine)
         xposter_local = str(ENV_FILE.parent / "x_poster.py")
         scp_xp = [
             "scp", "-i", ssh_key,
             "-o", "StrictHostKeyChecking=no",
-            "-o", "ConnectTimeout=10",
+            "-o", "ConnectTimeout=15",
             xposter_local,
             f"{EC2_HOST}:{EC2_REMOTE_XPOSTER}",
         ]
-        ok_xp, out_xp = run_cmd(scp_xp, timeout=20)
-        steps.append({"name": "SCP x_poster.py → EC2", "ok": ok_xp, "detail": out_xp or "Done"})
+        ok_xp, out_xp = run_cmd(scp_xp, timeout=60)
+        steps.append({"name": "SCP x_poster.py -> EC2", "ok": ok_xp, "detail": out_xp or "Done"})
 
         # Step 3: Docker restart on EC2
         restart_cmd = [
             "ssh", "-i", ssh_key,
             "-o", "StrictHostKeyChecking=no",
-            "-o", "ConnectTimeout=10",
+            "-o", "ConnectTimeout=15",
             EC2_HOST,
             f"docker restart {EC2_CONTAINER}",
         ]
-        ok3, out3 = run_cmd(restart_cmd, timeout=30)
+        ok3, out3 = run_cmd(restart_cmd, timeout=45)
         steps.append({"name": f"Restart Docker ({EC2_CONTAINER})", "ok": ok3, "detail": out3 or "Done"})
     else:
-        steps.append({"name": "SCP .env → EC2", "ok": False,
+        steps.append({"name": "SCP .env -> EC2", "ok": False,
                        "detail": "No SSH key found. Add your key to ~/.ssh/"})
         steps.append({"name": "Restart Docker", "ok": False,
-                       "detail": "Skipped — SSH not available"})
+                       "detail": "Skipped - SSH not available"})
 
     # Step 4: Commit & push x_poster.py to GitHub
     git_dir = ENV_FILE.parent.parent
@@ -192,9 +194,9 @@ def deploy_cookies(auth_token: str, ct0: str) -> list[dict]:
         "-m", "chore: update X cookie credentials via deploy dashboard",
         "--allow-empty",
     ])
-    ok_push, push_out = run_cmd(["git", "-C", str(git_dir), "push", "origin", "main"], timeout=30)
+    ok_push, push_out = run_cmd(["git", "-C", str(git_dir), "push", "origin", "main"], timeout=45)
     steps.append({
-        "name": "Git push → GitHub",
+        "name": "Git push -> GitHub",
         "ok": ok_push,
         "detail": push_out or commit_out or "Done"
     })
