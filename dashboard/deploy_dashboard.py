@@ -34,9 +34,15 @@ DASHBOARD_HOST = "0.0.0.0"   # Bind to all interfaces — accessible from anywhe
 # If not set, a random token is generated each run (printed in startup banner).
 _SECRET_ENV = os.getenv("DASHBOARD_SECRET", "").strip()
 if not _SECRET_ENV:
-    import secrets as _secrets
-    _SECRET_ENV = _secrets.token_urlsafe(16)
-    print(f"[Dashboard] No DASHBOARD_SECRET set — generated one-time token: {_SECRET_ENV}")
+    env_candidate = Path(__file__).parent.parent / "TelegramDealAutoPoster" / ".env"
+    if env_candidate.exists():
+        for line in env_candidate.read_text(encoding="utf-8").splitlines():
+            if line.startswith("DASHBOARD_SECRET="):
+                _SECRET_ENV = line.split("=", 1)[1].strip().strip('"').strip("'")
+                break
+if not _SECRET_ENV:
+    _SECRET_ENV = "techselect"
+    print(f"[Dashboard] Using default token: {_SECRET_ENV}")
 DASHBOARD_SECRET = _SECRET_ENV
 
 ENV_FILE = Path(__file__).parent.parent / "TelegramDealAutoPoster" / ".env"
