@@ -33,7 +33,7 @@ async def safe_send(client, target, *, text=None, parse_mode=None, media=None, c
             return await client.send_file(target, **kwargs)
         except FloodWaitError as e:
             wait_sec = int(e.seconds) + 1
-            logger.warning("FloodWait(%ds) on attempt %d — sleeping …", wait_sec, attempts)
+            logger.warning("FloodWait(%ds) on attempt %d - sleeping...", wait_sec, attempts)
             await asyncio.sleep(wait_sec)
         except (PeerFloodError, ValueError) as e:
             logger.error("Non-retryable error on attempt %d: %s", attempts, e)
@@ -45,7 +45,7 @@ async def safe_send(client, target, *, text=None, parse_mode=None, media=None, c
 
 async def start_rss_sync_loop() -> None:
     """Background task to periodically sync missing deals from https://techselect.blog/feed.xml."""
-    logger.info("✓ RSS Feed Sync Fallback active (Checking https://techselect.blog/feed.xml every 10 mins)")
+    logger.info("RSS Feed Sync Fallback active (Checking https://techselect.blog/feed.xml every 10 mins)")
     while True:
         try:
             await asyncio.sleep(600)  # Check every 10 minutes
@@ -56,7 +56,7 @@ async def start_rss_sync_loop() -> None:
             for item in rss_deals:
                 asins = extract_asins_from_text(item["description"] + " " + item["link"])
                 if asins and not all(dedup_has(a) for a in asins):
-                    logger.info("RSS Sync: Found new deal in feed — ASINs=%s", asins)
+                    logger.info("RSS Sync: Found new deal in feed - ASINs=%s", asins)
                     for a in asins:
                         dedup_record(a)
                     await push_deal_to_x(text=item["title"] + "\n" + item["description"], asins=asins)
@@ -76,7 +76,7 @@ async def start_deal_listener(client: TelegramClient) -> None:
 
     warmup_hours = int(getattr(config, "WARMUP_HOURS", 0))
     if warmup_hours:
-        logger.info("Warm-up mode enabled — will log deals silently for %dh …", warmup_hours)
+        logger.info("Warm-up mode enabled - will log deals silently for %dh...", warmup_hours)
 
     known_asins = dedup_load()
     dedup_prune()
@@ -134,16 +134,16 @@ async def start_deal_listener(client: TelegramClient) -> None:
         state.record_detected(asins, source_id=event.chat_id, source_title=chat_title)
 
         if asins and all(dedup_has(a) for a in asins):
-            logger.info("Skipping duplicate deal from %s — ASINs %s already posted", event.chat_id, asins)
+            logger.info("Skipping duplicate deal from %s - ASINs %s already posted", event.chat_id, asins)
             state.record_skipped(asins)
             return
 
-        logger.info("Deal extracted from %s — ASINs=%s", event.chat_id, asins)
+        logger.info("Deal extracted from %s - ASINs=%s", event.chat_id, asins)
 
         await _RATE_LIMITER.acquire()
 
         if not config.TARGET_CHANNELS:
-            logger.warning("No TARGET_CHANNELS configured — printing to log:")
+            logger.warning("No TARGET_CHANNELS configured - printing to log:")
             logger.info(updated_text)
             return
 
@@ -167,7 +167,7 @@ async def start_deal_listener(client: TelegramClient) -> None:
                         text=updated_text,
                         parse_mode="HTML",
                     )
-                logger.info("Posted to %s ✓", target_raw)
+                logger.info("Posted to %s successfully", target_raw)
                 posted_targets += 1
                 state.record_posted({
                     "asins": asins,
@@ -205,7 +205,7 @@ async def start_deal_listener(client: TelegramClient) -> None:
                             headers={"x-webhook-secret": config.WEBSITE_WEBHOOK_SECRET or ""},
                         )
                     if resp.status_code == 200:
-                        logger.info("Pushed deal to website ✓ — ASINs=%s", asins)
+                        logger.info("Pushed deal to website - ASINs=%s", asins)
                     else:
                         logger.warning("Website webhook returned %d: %s", resp.status_code, resp.text[:200])
                 except Exception as e:
@@ -221,7 +221,7 @@ async def start_deal_listener(client: TelegramClient) -> None:
         if errors:
             alert_target_raw = getattr(config, "ALERT_CHAT_ID", "")
             if alert_target_raw:
-                alert_msg = "\u26a0\ufe0f Deal Poster Errors\n" + "\n".join(errors)
+                alert_msg = "Deal Poster Errors\n" + "\n".join(errors)
                 try:
                     target = await client.get_entity(alert_target_raw)
                     await safe_send(client, target, text=alert_msg, parse_mode="HTML")
@@ -232,4 +232,4 @@ async def start_deal_listener(client: TelegramClient) -> None:
 
         logger.info("Done with message from %s", event.chat_id)
 
-    logger.info("Deal Listener active — listening for incoming posts …")
+    logger.info("Deal Listener active - listening for incoming posts...")
