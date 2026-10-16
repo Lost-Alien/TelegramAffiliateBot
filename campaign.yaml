@@ -1,0 +1,36 @@
+campaign:
+  name: "Tech Select - Traffic & Community Growth"
+  objective: "OUTCOME_TRAFFIC"
+  status: "PAUSED"
+  special_ad_categories: []
+
+ad_set:
+  name: "Tech Enthusiasts & Deal Shoppers (India 18-35)"
+  daily_budget: 9700
+  billing_event: "IMPRESSIONS"
+  optimization_goal: "LINK_CLICKS"
+  bid_strategy: "LOWEST_COST_WITHOUT_CAP"
+  targeting:
+    countries:
+      - "IN"
+    age_min: 18
+    age_max: 35
+
+ads:
+  - name: "Telegram Deals - Lightning Drops"
+    headline: "🔥 Real-Time Amazon Price Drops | Join @TechSelectDeals"
+    primary_text: "Tired of missing lightning deals? ⚡ TechSelect tracks real-time price drops on laptops, phones, headphones, and PC gear with verified bank card offers. Join our Telegram Deals Channel for instant alerts before stock runs out!"
+    description: "Over 10,000+ tech buyers save daily with instant price alerts."
+    image: "logo.png"
+    link: "https://t.me/TechSelectDeals"
+    call_to_action: "LEARN_MORE"
+    status: "PAUSED"
+
+  - name: "TechSelect Blog - Independent Hardware Reviews"
+    headline: "Honest Hardware Reviews & Buying Guides | TechSelect.blog"
+    primary_text: "Before spending ₹50,000+ on your next laptop or smartphone, read our lab-tested benchmarks. Real thermals, battery loops, and effective street pricing with bank offers. Zero sponsored bias."
+    description: "Tested by independent hardware editors in India."
+    image: "logo.png"
+    link: "https://techselect.blog/"
+    call_to_action: "LEARN_MORE"
+    status: "PAUSED"

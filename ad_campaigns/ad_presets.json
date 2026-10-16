@@ -1,0 +1,114 @@
+{
+  "brand": "TechSelect India",
+  "website_url": "https://techselect.blog/",
+  "telegram_channel": "https://t.me/TechSelectDeals",
+  "telegram_handle": "@TechSelectDeals",
+  "twitter_handle": "@techselect_blog",
+  "whatsapp_channel_url": "https://whatsapp.com/channel/TechSelectDeals",
+  "currency": "INR",
+  "minimum_meta_daily_budget_inr": 96.73,
+  "ad_campaigns": [
+    {
+      "id": "telegram_deals_growth",
+      "objective": "OUTCOME_TRAFFIC",
+      "target_platform": "Telegram",
+      "campaign_name": "TechSelect - Telegram Deals Channel Growth",
+      "ad_set_name": "Tech Enthusiasts & Online Shoppers - India (18-35)",
+      "destination_url": "https://t.me/TechSelectDeals",
+      "targeting": {
+        "geo_locations": { "countries": ["IN"] },
+        "age_min": 18,
+        "age_max": 35,
+        "interests": [
+          "Amazon.in",
+          "Online shopping",
+          "Discounts and allowances",
+          "Consumer electronics",
+          "Smartphones",
+          "PC gaming"
+        ]
+      },
+      "creative": {
+        "headline": "🔥 Real-Time Amazon Price Drops | Join @TechSelectDeals",
+        "primary_text": "Tired of missing lightning deals? ⚡\n\nTechSelect tracks real-time price drops on laptops, phones, headphones, and PC gear across Amazon India. No fake discounts, no inflated MRPs—just real effective prices with bank card offers.\n\n👉 Tap below to join our Telegram Deals Channel for instant alerts before stock runs out!",
+        "description": "Over 10,000+ tech buyers save daily with instant price drop alerts.",
+        "call_to_action": "LEARN_MORE"
+      }
+    },
+    {
+      "id": "website_reviews_traffic",
+      "objective": "OUTCOME_TRAFFIC",
+      "target_platform": "Website",
+      "campaign_name": "TechSelect - Blog & Buying Guides Traffic",
+      "ad_set_name": "Tech Buyers & Hardware Researchers - India (18-45)",
+      "destination_url": "https://techselect.blog/",
+      "targeting": {
+        "geo_locations": { "countries": ["IN"] },
+        "age_min": 18,
+        "age_max": 45,
+        "interests": [
+          "Laptops",
+          "Computer hardware",
+          "Smartphones",
+          "Technology",
+          "Electronics"
+        ]
+      },
+      "creative": {
+        "headline": "Honest Hardware Reviews & Buyer Guides | TechSelect.blog",
+        "primary_text": "Before you spend ₹50,000+ on your next laptop or smartphone, read our lab-tested benchmarks. Zero hype. Real thermals, battery loops, and effective street pricing with bank offers.\n\nTested by real hardware editors in India.\n\n💻 Read our in-depth guides on TechSelect.blog.",
+        "description": "Zero sponsored bias. Tested by hardware editors Abhay Gupta, Dev Kumar & Aditya Patwa.",
+        "call_to_action": "OPEN_LINK"
+      }
+    },
+    {
+      "id": "whatsapp_community_growth",
+      "objective": "OUTCOME_TRAFFIC",
+      "target_platform": "WhatsApp",
+      "campaign_name": "TechSelect - WhatsApp Alerts Channel",
+      "ad_set_name": "Mobile Shoppers - India (18-40)",
+      "destination_url": "https://whatsapp.com/channel/TechSelectDeals",
+      "targeting": {
+        "geo_locations": { "countries": ["IN"] },
+        "age_min": 18,
+        "age_max": 40,
+        "interests": [
+          "Mobile phones",
+          "Online shopping",
+          "Coupon",
+          "Headphones"
+        ]
+      },
+      "creative": {
+        "headline": "📲 Instant Flash Deals on WhatsApp | TechSelect",
+        "primary_text": "Get the top 3 best tech deals delivered straight to your WhatsApp every morning. ⚡\n\nCurated by TechSelect editors. Only price-drop alerts with verified Amazon seller ratings.\n\n👉 Join the official TechSelect WhatsApp Channel now!",
+        "description": "Clean, spam-free daily tech alerts on WhatsApp.",
+        "call_to_action": "JOIN_GROUP"
+      }
+    },
+    {
+      "id": "multi_channel_hub",
+      "objective": "OUTCOME_AWARENESS",
+      "target_platform": "Ecosystem",
+      "campaign_name": "TechSelect - Multi-Channel Tech Community",
+      "ad_set_name": "All India Tech Community (18-40)",
+      "destination_url": "https://techselect.blog/",
+      "targeting": {
+        "geo_locations": { "countries": ["IN"] },
+        "age_min": 18,
+        "age_max": 40,
+        "interests": [
+          "Gadgets",
+          "Information technology",
+          "Amazon"
+        ]
+      },
+      "creative": {
+        "headline": "TechSelect India | Reviews • Telegram Alerts • Deals",
+        "primary_text": "Your complete tech companion in India 🇮🇳\n\n🌐 In-depth Hardware Reviews: techselect.blog\n⚡ Instant Price Drops: @TechSelectDeals on Telegram\n🐦 Daily Verdicts: @techselect_blog on X\n💬 Daily Top 3: WhatsApp Channel\n\nJoin India's most value-focused tech community today!",
+        "description": "Independent hardware reviews & curated tech price alerts.",
+        "call_to_action": "VISIT_WEBSITE"
+      }
+    }
+  ]
+}

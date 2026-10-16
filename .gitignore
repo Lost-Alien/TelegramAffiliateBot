@@ -40,6 +40,35 @@ state.json
 # Explicit secret files
 Whatsapp_credentials.csv
 TelegramBot-key.pem
+credentials.json
+*credentials*.json
+*meta-ads*
+*meta_ads*
+*.token
+*.token.json
+token.json
+tokens.json
+secrets.json
+secret*.json
+service_account*.json
+client_secret*.json
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# System and temporary files
+.DS_Store
+Thumbs.db
+*.swp
+*.bak
+*.tmp
+*.zip
+*.tar.gz
+scratch/
 
 # Downloaded puzzle image cache
 TelegramDealAutoPoster/data/puzzle_images/
+
