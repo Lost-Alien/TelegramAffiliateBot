@@ -75,24 +75,24 @@ class RateLimiter:
         self.min_delay = min_delay
         self.max_delay = max_delay
         self._timestamps = []  # sorted list of timestamps
+        if max_per_hour < 1 or min_delay < 0 or max_delay < min_delay:
+            raise ValueError("Invalid posting rate limits")
+        self._lock = asyncio.Lock()
 
     async def acquire(self):
-        now = time.time()
-        # Evict stale entries (>1 h old)
-        self._timestamps = [t for t in self._timestamps if t > now - 3600]
-
-        # Hourly cap: sleep until oldest slot frees up
-        if len(self._timestamps) >= self.max_per_hour:
-            wait = (self._timestamps[0] + 3600) - now
-            if wait > 0:
+        # Hold the slot while sleeping: concurrent events must not all pass
+        # the same hourly-cap check and post together when it expires.
+        async with self._lock:
+            while True:
+                now = time.time()
+                self._timestamps = [t for t in self._timestamps if t > now - 3600]
+                if len(self._timestamps) < self.max_per_hour:
+                    break
+                wait = max(0, self._timestamps[0] + 3600 - now)
                 logger.info("Rate limit reached, waiting %.0fs …", wait)
                 await asyncio.sleep(wait)
-            self._timestamps = [t for t in self._timestamps if t > now - 3600]
-
-        # Human-like random delay between min/max
-        delay = random.uniform(self.min_delay, self.max_delay)
-        await asyncio.sleep(delay)
-        self._timestamps.append(now)
+            await asyncio.sleep(random.uniform(self.min_delay, self.max_delay))
+            self._timestamps.append(time.time())
 
 
 # Instantiate once — reads config attributes at load time
