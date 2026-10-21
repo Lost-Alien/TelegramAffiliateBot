@@ -1,5 +1,6 @@
 import sys
 import asyncio
+from contextlib import contextmanager
 import uvicorn
 from telethon import TelegramClient
 import config
@@ -9,6 +10,18 @@ from join_approver import start_join_request_approver
 import state
 import channels
 from web.api import create_app
+from lifecycle import run_services
+
+
+class MonitorServer(uvicorn.Server):
+    # The shared application owns signals, rather than only stopping Uvicorn
+    # while leaving the Telegram client's main coroutine running.
+    def install_signal_handlers(self):
+        pass
+
+    @contextmanager
+    def capture_signals(self):
+        yield
 
 async def main():
     if not config.API_ID or not config.API_HASH:
@@ -41,8 +54,7 @@ async def main():
         port=config.WEB_PORT,
         log_level="warning",
     )
-    server = uvicorn.Server(config=uvicorn_config)
-    asyncio.create_task(server.serve())
+    server = MonitorServer(config=uvicorn_config)
 
     # Register event listeners
     await start_deal_listener(client)
@@ -52,7 +64,7 @@ async def main():
     print(f"🌐 Web UI Monitor: http://{config.WEB_HOST}:{config.WEB_PORT}")
     print(f"Listening to incoming deal posts and replacing Amazon links with tags '{config.AFFILIATE_TAGS}'...\n")
     
-    await client.run_until_disconnected()
+    await run_services(client, server)
 
 if __name__ == "__main__":
     asyncio.run(main())

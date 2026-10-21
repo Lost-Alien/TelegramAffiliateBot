@@ -38,6 +38,8 @@ state.json
 *.override.yml
 
 # Explicit secret files
+AntigravityBotAdmin_accessKeys.csv
+AntigravityBotAdmin_credentials.csv
 Whatsapp_credentials.csv
 TelegramBot-key.pem
 credentials.json
