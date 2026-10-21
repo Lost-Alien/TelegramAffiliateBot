@@ -25,8 +25,17 @@ async def run_services(client, server, stop=None):
     finally:
         server.should_exit = True
         try:
-            await asyncio.wait_for(client.disconnect(), timeout=8)
-            await asyncio.wait_for(asyncio.gather(*tasks[:2], return_exceptions=True), timeout=8)
+            try:
+                await asyncio.wait_for(client.disconnect(), timeout=8)
+            except asyncio.TimeoutError:
+                pass
+            # A disconnected client watcher can still be awaiting its initial
+            # network request; cancel that watcher after closing the session.
+            tasks[1].cancel()
+            try:
+                await asyncio.wait_for(tasks[0], timeout=5)
+            except asyncio.TimeoutError:
+                pass
         finally:
             for task in tasks:
                 if not task.done():

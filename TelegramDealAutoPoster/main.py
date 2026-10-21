@@ -53,6 +53,7 @@ async def main():
         host=config.WEB_HOST,
         port=config.WEB_PORT,
         log_level="warning",
+        timeout_graceful_shutdown=3,
     )
     server = MonitorServer(config=uvicorn_config)
 
