@@ -4,7 +4,8 @@
   "telegram_channel": "https://t.me/TechSelectDeals",
   "telegram_handle": "@TechSelectDeals",
   "twitter_handle": "@techselect_blog",
-  "whatsapp_channel_url": "https://whatsapp.com/channel/TechSelectDeals",
+  "whatsapp_channel_url": "https://whatsapp.com/channel/0029VbDdnbkG3R3e7wu0g70C",
+  "whatsapp_flash_deals_hub_url": "https://whatsapp.com/channel/0029Vb8ptNY545ux1D4rUA2E",
   "currency": "INR",
   "minimum_meta_daily_budget_inr": 96.73,
   "ad_campaigns": [
@@ -67,7 +68,7 @@
       "target_platform": "WhatsApp",
       "campaign_name": "TechSelect - WhatsApp Alerts Channel",
       "ad_set_name": "Mobile Shoppers - India (18-40)",
-      "destination_url": "https://whatsapp.com/channel/TechSelectDeals",
+      "destination_url": "https://whatsapp.com/channel/0029VbDdnbkG3R3e7wu0g70C",
       "targeting": {
         "geo_locations": { "countries": ["IN"] },
         "age_min": 18,
@@ -81,7 +82,7 @@
       },
       "creative": {
         "headline": "📲 Instant Flash Deals on WhatsApp | TechSelect",
-        "primary_text": "Get the top 3 best tech deals delivered straight to your WhatsApp every morning. ⚡\n\nCurated by TechSelect editors. Only price-drop alerts with verified Amazon seller ratings.\n\n👉 Join the official TechSelect WhatsApp Channel now!",
+        "primary_text": "Get the top 3 best mobile & laptop deals delivered straight to your WhatsApp every morning. ⚡\n\nCurated by TechSelect editors. Only price-drop alerts with verified Amazon seller ratings.\n\n👉 Join the official TechSelect WhatsApp Channel now!",
         "description": "Clean, spam-free daily tech alerts on WhatsApp.",
         "call_to_action": "JOIN_GROUP"
       }
